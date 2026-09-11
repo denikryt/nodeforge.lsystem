@@ -1,9 +1,10 @@
-"""Validation helpers for legacy L-system grammar strings."""
+"""Validation helpers for L-system grammar strings and turtle commands."""
 
 import re
 
 from NodeForge.errors import CompileError
 from .modules import BUILTIN_COMMANDS as COMMANDS, parse_rule_predecessor
+from .model import LSystemModule
 
 _ALLOWED_RE = re.compile(r"^[A-Za-z0-9_]$")
 
@@ -14,7 +15,7 @@ def is_allowed_symbol(ch: str) -> bool:
 
 
 def validate_stream(value: str, context: str) -> str:
-    """Validate a legacy axiom or replacement string before marker-aware parsing."""
+    """Validate an axiom or replacement string before marker-aware parsing."""
     if not isinstance(value, str):
         raise CompileError(f"{context} must be a compile-time string")
     # Parenthesized module streams are fully validated after ls_system() collects
@@ -33,4 +34,25 @@ def validate_rule_symbol(value: str) -> str:
     return parse_rule_predecessor(value)
 
 
-__all__ = ["COMMANDS", "is_allowed_symbol", "validate_stream", "validate_rule_symbol"]
+def validate_runtime_branch_grammar(axiom: tuple[LSystemModule, ...], rules: dict[str, tuple[LSystemModule, ...]]) -> None:
+    """Validate the narrow bracket invariant required by runtime rewriting."""
+    def check_balanced(modules, context):
+        depth = 0
+        for module in modules:
+            if module.name == "[":
+                depth += 1
+            elif module.name == "]":
+                depth -= 1
+                if depth < 0:
+                    raise CompileError(f"{context} contains unmatched ]")
+        if depth != 0:
+            raise CompileError(f"{context} contains unclosed [")
+
+    check_balanced(axiom, "Runtime L-system axiom")
+    for predecessor, replacement in rules.items():
+        if predecessor in {"[", "]"}:
+            raise CompileError("Runtime L-system rules cannot rewrite [ or ]")
+        check_balanced(replacement, f"Runtime L-system rule {predecessor!r}")
+
+
+__all__ = ["COMMANDS", "is_allowed_symbol", "validate_stream", "validate_rule_symbol", "validate_runtime_branch_grammar"]

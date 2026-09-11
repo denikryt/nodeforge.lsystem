@@ -8,6 +8,7 @@ from .backends import (
     branch_free_vectorized_runtime_backend,
     select_backend_category,
     static_baked_backend,
+    spatial_runtime_backend,
     validate_branch_aware_backend_available,
 )
 from .expander import expand
@@ -16,8 +17,9 @@ from .model import (
     LSystemPart, LSystemRule, LSystemSpec, LSystemStep,
 )
 from .modules import parse_stream
-from .runtime_tables import build_branch_aware_command_table, build_branch_free_command_table
+from .runtime_tables import build_branch_aware_command_table, build_branch_free_command_table, build_spatial_command_table
 from .turtle import interpret_static
+from .runtime_dynamic import runtime_dynamic_backend
 
 
 def build_spec(parts: list[LSystemPart]) -> LSystemSpec:
@@ -102,6 +104,8 @@ def compile_lsystem(comp, expr, depth=0):
             raise CompileError("ls_system() arguments must be L-system constructor parts")
         parts.append(value)
     spec = build_spec(parts)
+    if not isinstance(spec.iterations, int):
+        return runtime_dynamic_backend(comp, spec, x=depth * 240 + 260, y=-depth * 120)
     stream = expand(spec.axiom, spec.rules, spec.iterations)
     metrics = analyze(stream, angle=spec.angle, step=spec.step, markers=spec.markers)
     category = select_backend_category(metrics)
@@ -114,6 +118,13 @@ def compile_lsystem(comp, expr, depth=0):
             creation_iteration=spec.iterations,
         )
         return static_baked_backend(comp, interpretation, x=depth * 240 + 260, y=-depth * 120)
+    if category == "spatial_runtime":
+        table = build_spatial_command_table(stream, angle_degrees=spec.angle, step=spec.step, markers=spec.markers)
+        return spatial_runtime_backend(
+            comp, table,
+            x=depth * 240 + 260,
+            y=-depth * 120,
+        )
     if category == "branch_free_runtime":
         table = build_branch_free_command_table(stream, angle_degrees=spec.angle, step=spec.step, markers=spec.markers)
         return branch_free_vectorized_runtime_backend(

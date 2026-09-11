@@ -11,8 +11,8 @@ from NodeForge.geometry import _is_const_number
 from NodeForge.values import Value
 from .model import LSystemMarker, LSystemModule, ModuleArg
 
-BUILTIN_COMMANDS = frozenset(("F", "f", "+", "-", "[", "]"))
-PARAMETERIZED_BUILTINS = frozenset(("F", "f", "+", "-"))
+BUILTIN_COMMANDS = frozenset(("F", "f", "+", "-", "^", "&", "/", "\\", "[", "]"))
+PARAMETERIZED_BUILTINS = frozenset(("F", "f", "+", "-", "^", "&", "/", "\\"))
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _LEGACY_SYMBOL_RE = re.compile(r"^[A-Za-z0-9_]$")
 _NUMERIC_LITERAL_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")

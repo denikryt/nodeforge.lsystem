@@ -4,6 +4,9 @@ from NodeForge.errors import CompileError
 from NodeForge.values import Value
 from .model import LSystemAnalysis, LSystemModule
 
+_SPATIAL_ROTATIONS = {"^", "&", "/", "\\"}
+_ALL_ROTATIONS = {"+", "-", "^", "&", "/", "\\"}
+
 
 def _legacy_modules(stream: str) -> tuple[LSystemModule, ...]:
     return tuple(LSystemModule(ch, (), ch) for ch in stream)
@@ -17,13 +20,11 @@ def analyze(stream, *, angle, step, markers=None) -> LSystemAnalysis:
     """Validate branch brackets and compute backend-selection metrics."""
     modules = _legacy_modules(stream) if isinstance(stream, str) else tuple(stream)
     marker_names = set(markers or ())
-    depth = 0
-    max_depth = 0
-    segment_count = 0
+    depth = max_depth = segment_count = marker_count = 0
     has_branches = False
+    has_spatial_rotation = False
     uses_runtime_angle = isinstance(angle, Value)
     uses_runtime_step = isinstance(step, Value)
-    marker_count = 0
     marker_param_runtime = False
     for module in modules:
         name = module.name
@@ -31,7 +32,8 @@ def analyze(stream, *, angle, step, markers=None) -> LSystemAnalysis:
             segment_count += 1
         if name in {"F", "f"}:
             uses_runtime_step = uses_runtime_step or (_arg_runtime(module) if module.args else isinstance(step, Value))
-        elif name in {"+", "-"}:
+        elif name in _ALL_ROTATIONS:
+            has_spatial_rotation = has_spatial_rotation or name in _SPATIAL_ROTATIONS
             uses_runtime_angle = uses_runtime_angle or (_arg_runtime(module) if module.args else isinstance(angle, Value))
         elif name == "[":
             has_branches = True
@@ -56,6 +58,7 @@ def analyze(stream, *, angle, step, markers=None) -> LSystemAnalysis:
         max_branch_depth=max_depth,
         marker_count=marker_count,
         marker_param_is_runtime=marker_param_runtime,
+        has_spatial_rotation=has_spatial_rotation,
     )
 
 

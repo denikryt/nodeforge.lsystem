@@ -4,7 +4,7 @@ from NodeForge.constants import TYPE_BOOL, TYPE_FLOAT, TYPE_GEOMETRY, TYPE_INT, 
 from NodeForge.errors import CompileError
 from NodeForge.nodes import _boolean_math, _combine_xyz_mixed, _compare, _int_value, _math, _new_node, _switch, _value, _vector_math
 from NodeForge.values import Value
-from .turtle import _as_numeric_value
+from .turtle import _as_numeric_value, rotate_about_axis_runtime
 from .runtime_tables import (
     DRAW_MASK_ATTR,
     LOCAL_POSITION_ATTR,
@@ -13,6 +13,7 @@ from .runtime_tables import (
     MARKER_ITERATION_ATTR,
     MARKER_MASK_ATTR,
     MARKER_TANGENT_ATTR,
+    MARKER_UP_ATTR,
     MARKER_PATH_ID_ATTR,
     MOVE_DISTANCE_STATIC_ATTR,
     MOVE_PARAM_INDEX_ATTR,
@@ -23,6 +24,8 @@ from .runtime_tables import (
     TURN_PARAM_INDEX_ATTR,
     TURN_SIGN_ATTR,
     WORLD_POSITION_ATTR,
+    PARENT_STATE_INDEX_ATTR, COMMAND_KIND_ATTR, COMMAND_VALUE_STATIC_ATTR, COMMAND_VALUE_PARAM_INDEX_ATTR, COMMAND_SIGN_ATTR,
+    HEADING_ATTR, LEFT_ATTR, UP_ATTR, CMD_MOVE_DRAW, CMD_MOVE_NO_DRAW, CMD_YAW, CMD_PITCH, CMD_ROLL, CMD_MARKER,
 )
 from .modules import marker_identity
 
@@ -33,6 +36,8 @@ def select_backend_category(analysis):
     """Return the stable internal backend category for an analyzed L-system."""
     if not analysis.angle_is_runtime and not analysis.step_is_runtime:
         return "static"
+    if analysis.has_spatial_rotation:
+        return "spatial_runtime"
     if analysis.has_branches:
         return "branched_runtime"
     return "branch_free_runtime"
@@ -138,7 +143,7 @@ def _named_attribute(group, attr_name: str, data_type: str, typ: str, x=0, y=0):
 
 
 def _accumulate_vector(group, value: Value, x=0, y=0):
-    if value.typ != "VECTOR":
+    if value.typ != TYPE_VECTOR:
         raise CompileError("L-system position accumulation expects a Vector field")
     node = _new_node(group, "GeometryNodeAccumulateField", x, y)
     _set_enum(node, "data_type", "FLOAT_VECTOR", "Accumulate Field node vector contract unavailable")
@@ -148,7 +153,7 @@ def _accumulate_vector(group, value: Value, x=0, y=0):
         # Blender versions where the node follows the incoming field domain do not expose domain.
         pass
     group.links.new(value.socket, _input_socket(node, "Value"))
-    return Value(_output_socket(node, "Leading"), "VECTOR")
+    return Value(_output_socket(node, "Leading"), TYPE_VECTOR)
 
 
 
@@ -229,25 +234,25 @@ def _sample_index_vector(group, geometry: Value, value: Value, index: Value, x=0
     return Value(out, TYPE_VECTOR)
 
 def _set_position_geometry(group, geometry: Value, position: Value, x=0, y=0):
-    if geometry.typ != "GEOMETRY" or position.typ != "VECTOR":
+    if geometry.typ != TYPE_GEOMETRY or position.typ != TYPE_VECTOR:
         raise CompileError("Set Position backend helper received incompatible values")
     node = _new_node(group, "GeometryNodeSetPosition", x, y)
     group.links.new(geometry.socket, _input_socket(node, "Geometry"))
     group.links.new(position.socket, _input_socket(node, "Position"))
-    return Value(_output_socket(node, "Geometry"), "GEOMETRY")
+    return Value(_output_socket(node, "Geometry"), TYPE_GEOMETRY)
 
 
 def _boolean_not(group, value: Value, x=0, y=0):
-    if value.typ != "BOOL":
+    if value.typ != TYPE_BOOL:
         raise CompileError("Boolean NOT expects Bool")
     node = _new_node(group, "FunctionNodeBooleanMath", x, y)
     _set_enum(node, "operation", "NOT", "Boolean Math NOT contract unavailable")
     group.links.new(value.socket, _input_socket(node, "Boolean"))
-    return Value(_output_socket(node, "Boolean"), "BOOL")
+    return Value(_output_socket(node, "Boolean"), TYPE_BOOL)
 
 
 def _delete_edges(group, geometry: Value, selection: Value, x=0, y=0):
-    if geometry.typ != "GEOMETRY" or selection.typ != "BOOL":
+    if geometry.typ != TYPE_GEOMETRY or selection.typ != TYPE_BOOL:
         raise CompileError("Delete Geometry backend helper received incompatible values")
     node = _new_node(group, "GeometryNodeDeleteGeometry", x, y)
     try:
@@ -260,11 +265,11 @@ def _delete_edges(group, geometry: Value, selection: Value, x=0, y=0):
         pass
     group.links.new(geometry.socket, _input_socket(node, "Geometry"))
     group.links.new(selection.socket, _input_socket(node, "Selection"))
-    return Value(_output_socket(node, "Geometry"), "GEOMETRY")
+    return Value(_output_socket(node, "Geometry"), TYPE_GEOMETRY)
 
 
 def _mesh_to_curve(group, geometry: Value, x=0, y=0):
-    if geometry.typ != "GEOMETRY":
+    if geometry.typ != TYPE_GEOMETRY:
         raise CompileError("Mesh to Curve backend helper received non-geometry")
     node = _new_node(group, "GeometryNodeMeshToCurve", x, y)
     try:
@@ -279,7 +284,7 @@ def _mesh_to_curve(group, geometry: Value, x=0, y=0):
         out = _output_socket(node, "Curve")
     except CompileError:
         out = _output_socket(node, "Geometry")
-    return Value(out, "GEOMETRY")
+    return Value(out, TYPE_GEOMETRY)
 
 
 def _scale_float(group, a: Value, b: Value, x=0, y=0):
@@ -378,10 +383,13 @@ def _accumulate_float(group, value: Value, x=0, y=0):
     return Value(_output_socket(node, "Leading"), TYPE_FLOAT)
 
 
-def _store_runtime_marker_tangent(comp, geometry: Value, tangent: Value, *, x=0, y=0):
-    """Store runtime-computed turtle heading on marker points for downstream orientation."""
+def _store_runtime_marker_orientation(comp, geometry: Value, tangent: Value, up: Value | None = None, *, x=0, y=0):
+    """Store marker Heading and Up vectors on marker points only."""
     keep_markers = _named_attribute(comp.group, MARKER_MASK_ATTR, "BOOLEAN", TYPE_BOOL, x, y)
-    return _store_named_attribute_geometry(comp.group, geometry, MARKER_TANGENT_ATTR, tangent, selection=keep_markers, domain="POINT", data_type="FLOAT_VECTOR", x=x + 220, y=y)
+    result = _store_named_attribute_geometry(comp.group, geometry, MARKER_TANGENT_ATTR, tangent, selection=keep_markers, domain="POINT", data_type="FLOAT_VECTOR", x=x + 220, y=y)
+    if up is None:
+        up = _combine_xyz_mixed(comp.group, [0.0, 0.0, 1.0], x, y - 80)
+    return _store_named_attribute_geometry(comp.group, result, MARKER_UP_ATTR, up, selection=keep_markers, domain="POINT", data_type="FLOAT_VECTOR", x=x + 440, y=y - 80)
 
 
 def _store_runtime_marker_params(comp, geometry: Value, table, *, x=0, y=0):
@@ -440,7 +448,7 @@ def branch_free_vectorized_runtime_backend(comp, table, *, angle_degrees, step, 
     delta, draw_mask, _, tangent = _runtime_motion_fields(comp, table, source_geo, x=x, y=y, grouped=False)
     position = _accumulate_vector(comp.group, delta, x + 1080, y - 140)
     positioned = _set_position_geometry(comp.group, source_geo, position, x + 1280, y)
-    positioned = _store_runtime_marker_tangent(comp, positioned, tangent, x=x + 1280, y=y - 500)
+    positioned = _store_runtime_marker_orientation(comp, positioned, tangent, x=x + 1280, y=y - 500)
     positioned = _store_runtime_marker_params(comp, positioned, table, x=x + 1280, y=y - 700)
     geos = []
     if table.draw_count > 0:
@@ -487,7 +495,7 @@ def branch_aware_vectorized_runtime_backend(comp, table, *, angle_degrees, step,
         geometry = _store_named_attribute_geometry(comp.group, geometry, WORLD_POSITION_ATTR, candidate_world, selection=depth_match, domain="POINT", data_type="FLOAT_VECTOR", x=x + 2100, y=row_y)
     final_world = _named_attribute(comp.group, WORLD_POSITION_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 2300, y - 120)
     positioned = _set_position_geometry(comp.group, geometry, final_world, x + 2500, y)
-    positioned = _store_runtime_marker_tangent(comp, positioned, tangent, x=x + 2500, y=y - 500)
+    positioned = _store_runtime_marker_orientation(comp, positioned, tangent, x=x + 2500, y=y - 500)
     positioned = _store_runtime_marker_params(comp, positioned, table, x=x + 2500, y=y - 700)
     geos = []
     if table.draw_count > 0:
@@ -500,6 +508,157 @@ def branch_aware_vectorized_runtime_backend(comp, table, *, angle_degrees, step,
         geos.append(_delete_geometry(comp.group, positioned, delete_nonmarkers, domain="POINT", x=x + 2900, y=y - 260))
     return _join_geometry_values(comp.group, geos, x + 3120, y)
 
+
+
+def _sample_index_typed(group, geometry: Value, value: Value, index: Value, data_type: str, typ: str, x=0, y=0):
+    """Sample a typed point-domain field at a specific state-row index."""
+    if geometry.typ != TYPE_GEOMETRY or index.typ != TYPE_INT:
+        raise CompileError("Sample Index spatial helper received incompatible geometry/index")
+    node = _new_node(group, "GeometryNodeSampleIndex", x, y)
+    _set_enum(node, "data_type", data_type, "Sample Index spatial contract unavailable")
+    try:
+        _set_enum(node, "domain", "POINT", "Sample Index point-domain contract unavailable")
+    except CompileError:
+        pass
+    group.links.new(geometry.socket, _input_socket(node, "Geometry"))
+    value_names = {"FLOAT": ("Value", "Float"), "INT": ("Value", "Integer"), "BOOLEAN": ("Value", "Boolean"), "FLOAT_VECTOR": ("Value", "Vector"), "QUATERNION": ("Value", "Rotation")}[data_type]
+    linked = False
+    for name in value_names:
+        try:
+            group.links.new(value.socket, _input_socket(node, name))
+            linked = True
+            break
+        except CompileError:
+            continue
+    if not linked:
+        raise CompileError("Sample Index spatial backend has no compatible Value input")
+    group.links.new(index.socket, _input_socket(node, "Index"))
+    for name in value_names:
+        try:
+            return Value(_output_socket(node, name), typ)
+        except CompileError:
+            continue
+    raise CompileError("Sample Index spatial backend has no compatible Value output")
+
+
+def _sample_command_attr(group, source_geo, name, data_type, typ, index, x, y):
+    field = _named_attribute(group, name, data_type, typ, x, y)
+    return _sample_index_typed(group, source_geo, field, index, data_type, typ, x + 180, y)
+
+
+def _normalize_vector(group, value: Value, x=0, y=0):
+    return _vector_math(group, "NORMALIZE", [value], TYPE_VECTOR, x, y)
+
+
+def spatial_runtime_backend(comp, table, *, x=0, y=0):
+    """Evaluate a spatial turtle sequentially in a Repeat Zone.
+
+    Arbitrary yaw/pitch/roll rotations are non-commutative, so the planar
+    accumulated-heading optimization cannot represent them. Each table row
+    therefore depends on an already evaluated earlier parent frame.
+    """
+    if table.draw_count <= 0 and table.marker_count <= 0:
+        raise CompileError("Spatial runtime L-system backend requires drawn segments or markers")
+    from . import resources
+
+    tx = getattr(comp, "generated_resource_transaction", None)
+    if tx is None:
+        tx = resources.create_transaction(comp.group)
+        comp.generated_resource_transaction = tx
+    _mesh, obj = resources.create_spatial_command_mesh_object_from_table(tx, table, name_hint=getattr(comp.group, "name", "NodeForge"))
+    source_geo = _object_geometry_from_generated(comp, obj, x=x, y=y)
+
+    ri = _new_node(comp.group, "GeometryNodeRepeatInput", x + 260, y)
+    ro = _new_node(comp.group, "GeometryNodeRepeatOutput", x + 2500, y)
+    try:
+        paired = ri.pair_with_output(ro)
+    except Exception as exc:
+        raise CompileError("Could not pair spatial L-system Repeat Zone nodes") from exc
+    if not paired:
+        raise CompileError("Could not pair spatial L-system Repeat Zone nodes")
+    try:
+        _input_socket(ri, "Iterations").default_value = table.vertex_count
+    except CompileError as exc:
+        raise CompileError("Spatial L-system Repeat Input has no Iterations socket") from exc
+    try:
+        comp.group.links.new(source_geo.socket, _input_socket(ri, "Geometry"))
+        carried = Value(_output_socket(ri, "Geometry"), TYPE_GEOMETRY)
+        iteration = Value(_output_socket(ri, "Iteration"), TYPE_INT)
+    except CompileError as exc:
+        raise CompileError("Spatial L-system Repeat Zone geometry state unavailable") from exc
+
+    current_index = iteration
+    parent_index = _sample_command_attr(comp.group, source_geo, PARENT_STATE_INDEX_ATTR, "INT", TYPE_INT, current_index, x + 420, y - 120)
+    command_kind = _sample_command_attr(comp.group, source_geo, COMMAND_KIND_ATTR, "INT", TYPE_INT, current_index, x + 420, y - 220)
+    value_static = _sample_command_attr(comp.group, source_geo, COMMAND_VALUE_STATIC_ATTR, "FLOAT", TYPE_FLOAT, current_index, x + 420, y - 320)
+    value_param_index = _sample_command_attr(comp.group, source_geo, COMMAND_VALUE_PARAM_INDEX_ATTR, "INT", TYPE_INT, current_index, x + 420, y - 420)
+    command_sign = _sample_command_attr(comp.group, source_geo, COMMAND_SIGN_ATTR, "FLOAT", TYPE_FLOAT, current_index, x + 420, y - 520)
+    value = _resolve_numeric_arg(comp.group, value_static, value_param_index, table.runtime_params, "L-system spatial command", x + 780, y - 340)
+
+    parent_position_field = _named_attribute(comp.group, WORLD_POSITION_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 760, y + 40)
+    parent_heading_field = _named_attribute(comp.group, HEADING_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 760, y - 40)
+    parent_left_field = _named_attribute(comp.group, LEFT_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 760, y - 120)
+    parent_up_field = _named_attribute(comp.group, UP_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 760, y - 200)
+    parent_position = _sample_index_vector(comp.group, carried, parent_position_field, parent_index, x + 980, y + 40)
+    parent_heading = _sample_index_vector(comp.group, carried, parent_heading_field, parent_index, x + 980, y - 40)
+    parent_left = _sample_index_vector(comp.group, carried, parent_left_field, parent_index, x + 980, y - 120)
+    parent_up = _sample_index_vector(comp.group, carried, parent_up_field, parent_index, x + 980, y - 200)
+
+    radians_value = _math(comp.group, "MULTIPLY", [value, _value(comp.group, 3.141592653589793 / 180.0, x + 980, y - 320)], x + 1160, y - 320)
+    signed_radians = _math(comp.group, "MULTIPLY", [radians_value, command_sign], x + 1340, y - 320)
+
+    scaled_heading = _vector_math(comp.group, "SCALE", [parent_heading, value], TYPE_VECTOR, x + 1160, y + 140)
+    moved_position = _vector_math(comp.group, "ADD", [parent_position, scaled_heading], TYPE_VECTOR, x + 1340, y + 140)
+    yaw_h = _normalize_vector(comp.group, rotate_about_axis_runtime(comp.group, parent_heading, parent_up, signed_radians, x + 1160, y - 520), x + 2100, y - 500)
+    yaw_l = _normalize_vector(comp.group, rotate_about_axis_runtime(comp.group, parent_left, parent_up, signed_radians, x + 1160, y - 700), x + 2100, y - 680)
+    pitch_h = _normalize_vector(comp.group, rotate_about_axis_runtime(comp.group, parent_heading, parent_left, signed_radians, x + 1160, y - 880), x + 2100, y - 860)
+    pitch_u = _normalize_vector(comp.group, rotate_about_axis_runtime(comp.group, parent_up, parent_left, signed_radians, x + 1160, y - 1060), x + 2100, y - 1040)
+    roll_l = _normalize_vector(comp.group, rotate_about_axis_runtime(comp.group, parent_left, parent_heading, signed_radians, x + 1160, y - 1240), x + 2100, y - 1220)
+    roll_u = _normalize_vector(comp.group, rotate_about_axis_runtime(comp.group, parent_up, parent_heading, signed_radians, x + 1160, y - 1420), x + 2100, y - 1400)
+
+    is_move_draw = _compare(comp.group, "EQUAL", command_kind, _int_value(comp.group, CMD_MOVE_DRAW, x + 1480, y + 260), x + 1660, y + 260)
+    is_move_no_draw = _compare(comp.group, "EQUAL", command_kind, _int_value(comp.group, CMD_MOVE_NO_DRAW, x + 1480, y + 200), x + 1660, y + 200)
+    is_move = _boolean_math(comp.group, "OR", [is_move_draw, is_move_no_draw], x + 1840, y + 230)
+    is_yaw = _compare(comp.group, "EQUAL", command_kind, _int_value(comp.group, CMD_YAW, x + 1480, y + 100), x + 1660, y + 100)
+    is_pitch = _compare(comp.group, "EQUAL", command_kind, _int_value(comp.group, CMD_PITCH, x + 1480, y + 40), x + 1660, y + 40)
+    is_roll = _compare(comp.group, "EQUAL", command_kind, _int_value(comp.group, CMD_ROLL, x + 1480, y - 20), x + 1660, y - 20)
+
+    new_position = _switch(comp.group, is_move, parent_position, moved_position, x + 2020, y + 180)
+    new_heading = _switch(comp.group, is_yaw, parent_heading, yaw_h, x + 2200, y + 80)
+    new_heading = _switch(comp.group, is_pitch, new_heading, pitch_h, x + 2380, y + 80)
+    new_left = _switch(comp.group, is_yaw, parent_left, yaw_l, x + 2200, y - 40)
+    new_left = _switch(comp.group, is_roll, new_left, roll_l, x + 2380, y - 40)
+    new_up = _switch(comp.group, is_pitch, parent_up, pitch_u, x + 2200, y - 160)
+    new_up = _switch(comp.group, is_roll, new_up, roll_u, x + 2380, y - 160)
+
+    index_node = _new_node(comp.group, "GeometryNodeInputIndex", x + 1960, y + 360)
+    point_index = Value(index_node.outputs[0], TYPE_INT)
+    current_selection = _compare(comp.group, "EQUAL", point_index, current_index, x + 2140, y + 360)
+    state_geo = _store_named_attribute_geometry(comp.group, carried, WORLD_POSITION_ATTR, new_position, selection=current_selection, domain="POINT", data_type="FLOAT_VECTOR", x=x + 2580, y=y + 140)
+    state_geo = _store_named_attribute_geometry(comp.group, state_geo, HEADING_ATTR, new_heading, selection=current_selection, domain="POINT", data_type="FLOAT_VECTOR", x=x + 2780, y=y + 60)
+    state_geo = _store_named_attribute_geometry(comp.group, state_geo, LEFT_ATTR, new_left, selection=current_selection, domain="POINT", data_type="FLOAT_VECTOR", x=x + 2980, y=y - 20)
+    state_geo = _store_named_attribute_geometry(comp.group, state_geo, UP_ATTR, new_up, selection=current_selection, domain="POINT", data_type="FLOAT_VECTOR", x=x + 3180, y=y - 100)
+    comp.group.links.new(state_geo.socket, _input_socket(ro, "Geometry"))
+    repeated = Value(_output_socket(ro, "Geometry"), TYPE_GEOMETRY)
+
+    final_world = _named_attribute(comp.group, WORLD_POSITION_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 3400, y + 120)
+    final_heading = _named_attribute(comp.group, HEADING_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 3400, y + 40)
+    final_up = _named_attribute(comp.group, UP_ATTR, "FLOAT_VECTOR", TYPE_VECTOR, x + 3400, y - 40)
+    positioned = _set_position_geometry(comp.group, repeated, final_world, x + 3600, y + 120)
+    positioned = _store_runtime_marker_orientation(comp, positioned, final_heading, final_up, x=x + 3600, y=y - 80)
+    positioned = _store_runtime_marker_params(comp, positioned, table, x=x + 3800, y=y - 300)
+
+    geos = []
+    if table.draw_count > 0:
+        draw_mask = _named_attribute(comp.group, DRAW_MASK_ATTR, "BOOLEAN", TYPE_BOOL, x + 4000, y + 120)
+        delete_edges = _boolean_not(comp.group, draw_mask, x + 4180, y + 120)
+        drawn_edges = _delete_edges(comp.group, positioned, delete_edges, x + 4360, y + 120)
+        geos.append(_mesh_to_curve(comp.group, drawn_edges, x + 4540, y + 120))
+    if table.marker_count > 0:
+        keep_markers = _named_attribute(comp.group, MARKER_MASK_ATTR, "BOOLEAN", TYPE_BOOL, x + 4000, y - 120)
+        delete_nonmarkers = _boolean_not(comp.group, keep_markers, x + 4180, y - 120)
+        geos.append(_delete_geometry(comp.group, positioned, delete_nonmarkers, domain="POINT", x=x + 4360, y=y - 120))
+    return _join_geometry_values(comp.group, geos, x + 4760, y)
 
 def static_baked_backend(comp, interpretation, x=0, y=0):
     """Materialize static turtle segments and marker points as generated IDs."""
@@ -531,5 +690,5 @@ def static_baked_backend(comp, interpretation, x=0, y=0):
 
 __all__ = [
     "MAX_LSYSTEM_BRANCH_DEPTH", "select_backend_category", "validate_branch_aware_backend_available",
-    "static_baked_backend", "branch_free_vectorized_runtime_backend", "branch_aware_vectorized_runtime_backend", "filter_marker_points",
+    "static_baked_backend", "branch_free_vectorized_runtime_backend", "branch_aware_vectorized_runtime_backend", "spatial_runtime_backend", "filter_marker_points",
 ]

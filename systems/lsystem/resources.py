@@ -31,6 +31,7 @@ def _marker_point_attribute_specs(table):
         ("nf_lsys_marker_id_d", "INT", [item[3] for item in ids]),
         ("nf_lsys_marker_mask", "BOOLEAN", getattr(table, "marker_mask", [False] * len(table.vertices))),
         ("nf_lsys_marker_tangent", "FLOAT_VECTOR", getattr(table, "marker_tangent", [(0.0, 0.0, 0.0)] * len(table.vertices))),
+        ("nf_lsys_marker_up", "FLOAT_VECTOR", getattr(table, "marker_up", [(0.0, 0.0, 1.0)] * len(table.vertices))),
         ("nf_lsys_marker_depth", "INT", getattr(table, "marker_depth", [0] * len(table.vertices))),
         ("nf_lsys_marker_path_id", "INT", getattr(table, "marker_path_id", [0] * len(table.vertices))),
         ("nf_lsys_marker_iteration", "INT", getattr(table, "marker_iteration", [-1] * len(table.vertices))),
@@ -83,6 +84,32 @@ def create_branch_aware_command_mesh_object_from_table(transaction, table, *, na
     )
 
 
+
+def create_spatial_command_mesh_object_from_table(transaction, table, *, name_hint: str):
+    """Create the sequential command/state mesh used by the spatial runtime backend."""
+    n = len(table.vertices)
+    initial_position = [(0.0, 0.0, 0.0)] * n
+    initial_heading = [(1.0, 0.0, 0.0)] + [(0.0, 0.0, 0.0)] * max(0, n - 1)
+    initial_left = [(0.0, 1.0, 0.0)] + [(0.0, 0.0, 0.0)] * max(0, n - 1)
+    initial_up = [(0.0, 0.0, 1.0)] + [(0.0, 0.0, 0.0)] * max(0, n - 1)
+    return _core._create_command_mesh_object_from_specs(
+        transaction, table, name_hint=name_hint,
+        mesh_role="spatial_runtime_command_mesh",
+        object_role="spatial_runtime_command_object",
+        point_attributes=(
+            ("nf_lsys_parent_state_index", "INT", table.parent_state_index),
+            ("nf_lsys_command_kind", "INT", table.command_kind),
+            ("nf_lsys_value_static", "FLOAT", table.value_static),
+            ("nf_lsys_value_param_index", "INT", table.value_param_index),
+            ("nf_lsys_command_sign", "FLOAT", table.command_sign),
+            ("nf_lsys_world_position", "FLOAT_VECTOR", initial_position),
+            ("nf_lsys_heading", "FLOAT_VECTOR", initial_heading),
+            ("nf_lsys_left", "FLOAT_VECTOR", initial_left),
+            ("nf_lsys_up", "FLOAT_VECTOR", initial_up),
+        ) + _marker_point_attribute_specs(table),
+        edge_attributes=(("nf_lsys_draw_mask", "BOOLEAN", table.draw_mask),),
+    )
+
 def create_marker_mesh_object_from_points(transaction, markers, *, name_hint: str):
     """Create static marker point data for this package."""
     safe_hint = _core._safe_name_hint(name_hint)
@@ -105,6 +132,7 @@ def create_marker_mesh_object_from_points(transaction, markers, *, name_hint: st
             ("nf_lsys_marker_id_d", "INT", [item[3] for item in ids]),
             ("nf_lsys_marker_mask", "BOOLEAN", [True] * len(markers)),
             ("nf_lsys_marker_tangent", "FLOAT_VECTOR", [(float(m.tangent.x), float(m.tangent.y), float(m.tangent.z)) for m in markers]),
+            ("nf_lsys_marker_up", "FLOAT_VECTOR", [(float(m.up.x), float(m.up.y), float(m.up.z)) for m in markers]),
             ("nf_lsys_marker_depth", "INT", [int(m.branch_depth) for m in markers]),
             ("nf_lsys_marker_path_id", "INT", [int(m.path_id) for m in markers]),
             ("nf_lsys_marker_iteration", "INT", [int(m.creation_iteration if m.creation_iteration is not None else -1) for m in markers]),
@@ -151,3 +179,52 @@ def create_marker_mesh_object_from_points(transaction, markers, *, name_hint: st
     _core._link_object_to_context_collection(obj)
     _core._hide_generated_object(obj)
     return mesh, obj, tuple(runtime_slots)
+
+
+def _create_point_table_object(transaction, table, *, name_hint: str, mesh_role: str, object_role: str, point_attributes):
+    """Create an owned point-only mesh/object from explicit table attributes."""
+    return _core._create_command_mesh_object_from_specs(
+        transaction,
+        table,
+        name_hint=name_hint,
+        mesh_role=mesh_role,
+        object_role=object_role,
+        point_attributes=point_attributes,
+        edge_attributes=(),
+    )
+
+
+def create_runtime_axiom_object(transaction, table, *, name_hint: str):
+    """Create the immutable point table that seeds a runtime L-string."""
+    return _create_point_table_object(
+        transaction, table, name_hint=name_hint,
+        mesh_role="runtime_axiom_mesh", object_role="runtime_axiom_object",
+        point_attributes=table.point_attributes(),
+    )
+
+
+def create_runtime_successor_object(transaction, table, *, name_hint: str):
+    """Create the immutable contiguous successor-module point table."""
+    return _create_point_table_object(
+        transaction, table, name_hint=name_hint,
+        mesh_role="runtime_successor_mesh", object_role="runtime_successor_object",
+        point_attributes=table.point_attributes(),
+    )
+
+
+
+def create_runtime_module_definitions_object(transaction, table, *, name_hint: str):
+    """Create immutable module descriptors addressed by runtime ``module_ref`` values."""
+    return _create_point_table_object(
+        transaction, table, name_hint=name_hint,
+        mesh_role="runtime_module_definitions_mesh", object_role="runtime_module_definitions_object",
+        point_attributes=table.point_attributes(),
+    )
+
+def create_runtime_rule_index_object(transaction, table, *, name_hint: str):
+    """Create the immutable symbol-id to production metadata point table."""
+    return _create_point_table_object(
+        transaction, table, name_hint=name_hint,
+        mesh_role="runtime_rule_index_mesh", object_role="runtime_rule_index_object",
+        point_attributes=table.point_attributes(),
+    )

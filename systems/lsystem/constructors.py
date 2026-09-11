@@ -58,11 +58,18 @@ def compile_rule(comp, expr, depth=0):
 
 
 def compile_iterations(comp, expr, depth=0):
-    """Compile ls_iterations(n) into an LSystemIterations part."""
+    """Compile ls_iterations(n) from a static integer or runtime NodeForge Int."""
     _require_positional(expr, 1)
-    value = _const(comp, expr.args[0], "ls_iterations()")
+    try:
+        value = comp._const_eval_macro_arg(expr.args[0])
+    except CompileError:
+        value = comp.compile(expr.args[0])
+        reject_compile_time_object(value, "ls_iterations()")
+        if not isinstance(value, Value) or value.typ != TYPE_INT:
+            raise CompileError("ls_iterations() must be an integer or runtime Int")
+        return LSystemIterations(value)
     if not isinstance(value, int) or isinstance(value, bool):
-        raise CompileError("ls_iterations() must be a compile-time integer")
+        raise CompileError("ls_iterations() must be an integer or runtime Int")
     if value < 0:
         raise CompileError("ls_iterations() must be non-negative")
     return LSystemIterations(value)

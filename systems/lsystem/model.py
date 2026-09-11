@@ -26,8 +26,8 @@ class LSystemRule(LSystemPart):
 
 @dataclass(frozen=True)
 class LSystemIterations(LSystemPart):
-    """Compile-time rewrite iteration count."""
-    value: int
+    """Rewrite iteration count, either a static integer or runtime Int Value."""
+    value: object
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,7 @@ class LSystemSpec(CompileTimeObject):
     """Validated L-system specification consumed internally by ls_system(...)."""
     axiom: tuple[LSystemModule, ...]
     rules: dict[str, tuple[LSystemModule, ...]]
-    iterations: int
+    iterations: object
     angle: object
     step: object
     params: dict[str, object]
@@ -97,14 +97,24 @@ class LSystemAnalysis:
     max_branch_depth: int
     marker_count: int = 0
     marker_param_is_runtime: bool = False
+    has_spatial_rotation: bool = False
 
 
 @dataclass(frozen=True)
 class TurtlePoint:
-    """A point that may contain static floats or runtime Value coordinates."""
+    """A world-space vector/point containing numeric components."""
     x: object
     y: object
     z: object
+
+
+@dataclass(frozen=True)
+class TurtleFrame:
+    """Spatial turtle state using an orthonormal Heading/Left/Up basis."""
+    position: TurtlePoint
+    heading: TurtlePoint
+    left: TurtlePoint
+    up: TurtlePoint
 
 
 @dataclass(frozen=True)
@@ -116,10 +126,11 @@ class TurtleSegment:
 
 @dataclass(frozen=True)
 class TurtleMarkerPoint:
-    """One emitted L-system marker point and its point-domain attributes."""
+    """One emitted marker point with an unambiguous spatial orientation frame."""
     position: TurtlePoint
     heading: object
     tangent: TurtlePoint
+    up: TurtlePoint
     branch_depth: int
     path_id: int
     creation_iteration: int | None
@@ -139,5 +150,5 @@ __all__ = [
     "LSystemPart", "LSystemAxiom", "LSystemRule", "LSystemIterations",
     "LSystemAngle", "LSystemStep", "LSystemParam", "LSystemMarker",
     "ModuleArg", "LSystemModule", "LSystemSpec", "LSystemAnalysis",
-    "TurtlePoint", "TurtleSegment", "TurtleMarkerPoint", "TurtleInterpretation",
+    "TurtlePoint", "TurtleFrame", "TurtleSegment", "TurtleMarkerPoint", "TurtleInterpretation",
 ]
