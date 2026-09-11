@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from NodeForge.constants import TYPE_BOOL, TYPE_FLOAT, TYPE_GEOMETRY, TYPE_INT, TYPE_ROTATION, TYPE_VECTOR
+from NodeForge.constants import TYPE_BOOL, TYPE_FLOAT, TYPE_GEOMETRY, TYPE_INT, TYPE_VECTOR
 from NodeForge.errors import CompileError
 from NodeForge.nodes import _boolean_math, _combine_xyz_mixed, _int_value, _new_node, _switch, _value, _vector_math
 from NodeForge.values import Value
@@ -54,6 +54,8 @@ from .runtime_tables import (
     encode_marker_payload,
 )
 from .validation import validate_runtime_branch_grammar
+
+TYPE_ROTATION = "ROTATION"
 
 SYMBOL_ID_ATTR = "nf_lsys_symbol_id"
 MODULE_REF_ATTR = "nf_lsys_module_ref"

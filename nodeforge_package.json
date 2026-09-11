@@ -5,8 +5,8 @@
   "version": "0.2.0",
   "author": "nachitima",
   "description": "L-system constructors.",
-  "nodeforge_min_version": "0.51.6",
-  "nodeforge_max_version": null,
+  "nodeforge_min_version": "0.49.78",
+  "nodeforge_max_version": "0.51.6",
   "contents": {
     "examples": "examples",
     "systems": "systems"
