@@ -6,9 +6,13 @@ from dataclasses import dataclass, field
 from math import cos, radians, sin
 
 from NodeForge.errors import CompileError
-from NodeForge.geometry import _is_const_number
-from NodeForge.values import Value
-from .model import LSystemModule
+from NodeForge.extension_api import ExtensionBackendValue
+from .interface import _Module as LSystemModule
+
+
+def _is_const_number(value) -> bool:
+    """Return whether *value* is a detached numeric scalar, excluding Bool."""
+    return type(value) in {int, float}
 
 MOVE_MASK_ATTR = "nf_lsys_move_mask"
 HEADING_INDEX_ATTR = "nf_lsys_heading_index"
@@ -61,7 +65,7 @@ class BranchFreeCommandTable:
     marker_depth: tuple[int, ...] = ()
     marker_path_id: tuple[int, ...] = ()
     marker_iteration: tuple[int, ...] = ()
-    runtime_params: tuple[tuple[str, Value], ...] = ()
+    runtime_params: tuple[tuple[str, ExtensionBackendValue], ...] = ()
     marker_param_static: dict[str, tuple[float, ...]] = field(default_factory=dict)
     marker_param_index: dict[str, tuple[int, ...]] = field(default_factory=dict)
     marker_count: int = 0
@@ -116,7 +120,7 @@ class BranchAwareCommandTable:
     marker_depth: tuple[int, ...] = ()
     marker_path_id: tuple[int, ...] = ()
     marker_iteration: tuple[int, ...] = ()
-    runtime_params: tuple[tuple[str, Value], ...] = ()
+    runtime_params: tuple[tuple[str, ExtensionBackendValue], ...] = ()
     marker_param_static: dict[str, tuple[float, ...]] = field(default_factory=dict)
     marker_param_index: dict[str, tuple[int, ...]] = field(default_factory=dict)
     marker_count: int = 0
@@ -148,8 +152,8 @@ def _legacy_modules(stream: str) -> tuple[LSystemModule, ...]:
     return tuple(LSystemModule(ch, (), ch) for ch in stream)
 
 
-def _runtime_slot(runtime_slots: list[tuple[str, Value]], name: str, value) -> int:
-    if not isinstance(value, Value):
+def _runtime_slot(runtime_slots: list[tuple[str, ExtensionBackendValue]], name: str, value) -> int:
+    if not isinstance(value, ExtensionBackendValue):
         return -1
     for idx, (slot_name, slot_value) in enumerate(runtime_slots):
         if slot_name == name and slot_value is value:
@@ -158,22 +162,22 @@ def _runtime_slot(runtime_slots: list[tuple[str, Value]], name: str, value) -> i
     return len(runtime_slots) - 1
 
 
-def _number_or_slot(value, source: str, runtime_slots: list[tuple[str, Value]]) -> tuple[float, int]:
-    if isinstance(value, Value):
+def _number_or_slot(value, source: str, runtime_slots: list[tuple[str, ExtensionBackendValue]]) -> tuple[float, int]:
+    if isinstance(value, ExtensionBackendValue):
         return 0.0, _runtime_slot(runtime_slots, source, value)
     if _is_const_number(value):
         return float(value), -1
     raise CompileError("L-system runtime table received non-numeric module argument")
 
 
-def _effective_move(module: LSystemModule, step, runtime_slots: list[tuple[str, Value]]) -> tuple[float, int]:
+def _effective_move(module: LSystemModule, step, runtime_slots: list[tuple[str, ExtensionBackendValue]]) -> tuple[float, int]:
     if module.args:
         arg = module.args[0]
         return _number_or_slot(arg.value, arg.param_name or arg.source, runtime_slots)
     return _number_or_slot(step, "__ls_step__", runtime_slots)
 
 
-def _effective_turn(module: LSystemModule, angle_degrees, sign: float, runtime_slots: list[tuple[str, Value]]) -> tuple[float, int, float]:
+def _effective_turn(module: LSystemModule, angle_degrees, sign: float, runtime_slots: list[tuple[str, ExtensionBackendValue]]) -> tuple[float, int, float]:
     if module.args:
         arg = module.args[0]
         static, idx = _number_or_slot(arg.value, arg.param_name or arg.source, runtime_slots)
@@ -235,7 +239,7 @@ def build_branch_free_command_table(stream, *, angle_degrees=90.0, step=1.0, mar
     turn_degrees_static: list[float] = []
     turn_param_index: list[int] = []
     turn_sign: list[float] = []
-    runtime_slots: list[tuple[str, Value]] = []
+    runtime_slots: list[tuple[str, ExtensionBackendValue]] = []
     marker_arrays = _init_marker_arrays()
     heading = 0
     heading_static_degrees = 0.0
@@ -323,7 +327,7 @@ def build_branch_aware_command_table(stream, *, angle_degrees=90.0, step=1.0, ma
     turn_degrees_static: list[float] = []
     turn_param_index: list[int] = []
     turn_sign: list[float] = []
-    runtime_slots: list[tuple[str, Value]] = []
+    runtime_slots: list[tuple[str, ExtensionBackendValue]] = []
     marker_arrays = _init_marker_arrays()
     paths: list[BranchPathRecord] = []
     draw_count = 0
@@ -439,7 +443,7 @@ CMD_PUSH = 7
 CMD_POP = 8
 
 
-def encode_command_fields(module: LSystemModule, *, angle_degrees, step, markers, runtime_slots: list[tuple[str, Value]]):
+def encode_command_fields(module: LSystemModule, *, angle_degrees, step, markers, runtime_slots: list[tuple[str, ExtensionBackendValue]]):
     """Encode one module's generic turtle command fields for runtime backends.
 
     Returns ``(kind, value_static, value_param_index, sign)``. Unknown
@@ -472,7 +476,7 @@ def encode_command_fields(module: LSystemModule, *, angle_degrees, step, markers
     return CMD_INITIAL, 0.0, -1, 0.0
 
 
-def encode_marker_payload(module: LSystemModule, *, markers, runtime_slots: list[tuple[str, Value]], parameter_names: tuple[str, ...]):
+def encode_marker_payload(module: LSystemModule, *, markers, runtime_slots: list[tuple[str, ExtensionBackendValue]], parameter_names: tuple[str, ...]):
     """Encode marker identity and declared parameter slots for one module."""
     marker = markers.get(module.name)
     static = {name: 0.0 for name in parameter_names}
@@ -505,7 +509,7 @@ class SpatialCommandTable:
     marker_depth: tuple[int, ...]
     marker_path_id: tuple[int, ...]
     marker_iteration: tuple[int, ...]
-    runtime_params: tuple[tuple[str, Value], ...]
+    runtime_params: tuple[tuple[str, ExtensionBackendValue], ...]
     marker_param_static: dict[str, tuple[float, ...]]
     marker_param_index: dict[str, tuple[int, ...]]
     symbol_count: int
@@ -535,7 +539,7 @@ def build_spatial_command_table(stream, *, angle_degrees=90.0, step=1.0, markers
     value_param_index = [-1]
     signs = [0.0]
     draw_mask = []
-    runtime_slots: list[tuple[str, Value]] = []
+    runtime_slots: list[tuple[str, ExtensionBackendValue]] = []
     marker_arrays = _init_marker_arrays()
     _append_marker_attrs(marker_arrays, runtime_slots=runtime_slots)
     state_index = 0

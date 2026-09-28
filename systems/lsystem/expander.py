@@ -1,7 +1,7 @@
 """Deterministic L-system token rewriting."""
 
 from NodeForge.errors import CompileError
-from .model import LSystemModule
+from .interface import _Module as LSystemModule
 
 MAX_LSYSTEM_SYMBOLS = 200000
 

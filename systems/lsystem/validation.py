@@ -4,7 +4,7 @@ import re
 
 from NodeForge.errors import CompileError
 from .modules import BUILTIN_COMMANDS as COMMANDS, parse_rule_predecessor
-from .model import LSystemModule
+from .interface import _Module as LSystemModule
 
 _ALLOWED_RE = re.compile(r"^[A-Za-z0-9_]$")
 

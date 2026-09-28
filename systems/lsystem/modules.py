@@ -7,9 +7,7 @@ import re
 from collections.abc import Mapping
 
 from NodeForge.errors import CompileError
-from NodeForge.geometry import _is_const_number
-from NodeForge.values import Value
-from .model import LSystemMarker, LSystemModule, ModuleArg
+from .interface import LSystemMarker, _Module as LSystemModule, _ModuleArg as ModuleArg
 
 BUILTIN_COMMANDS = frozenset(("F", "f", "+", "-", "^", "&", "/", "\\", "[", "]"))
 PARAMETERIZED_BUILTINS = frozenset(("F", "f", "+", "-", "^", "&", "/", "\\"))
@@ -42,12 +40,12 @@ def _parse_arg(text: str, params: Mapping[str, object], context: str) -> ModuleA
     if text == "":
         raise CompileError(f"{context} contains an empty module argument")
     if _NUMERIC_LITERAL_RE.match(text):
-        return ModuleArg(source=text, value=float(text), is_runtime=False)
+        return ModuleArg(source=text, value=float(text))
     if _IDENTIFIER_RE.match(text):
         if text not in params:
             raise CompileError(f"{context} references undeclared L-system parameter {text!r}")
         value = params[text]
-        return ModuleArg(source=text, value=value, is_runtime=isinstance(value, Value), param_name=text)
+        return ModuleArg(source=text, value=value, param_name=text)
     raise CompileError(f"{context} contains invalid module argument {text!r}")
 
 

@@ -6,6 +6,9 @@ import bpy
 import pytest
 
 from NodeForge import compiler, generated_resources
+from NodeForge.extension_api import ExtensionBackendContext, ExtensionBackendValue
+from NodeForge.extension_registry import ExtensionRegistry
+from NodeForge.nf_types import NFType
 from NodeForge.errors import CompileError
 import helpers
 
@@ -67,6 +70,24 @@ def _cleanup_evaluation(result):
     wrapper, obj, base_mesh, _snapshot = result
     helpers._cleanup_runtime_eval_objects(wrapper, obj, base_mesh)
 
+
+
+def test_semantic_part_list_literal_star_compiles_through_generic_extension_path():
+    """A source list of persisted L-System semantic records compiles through generic semantic LIST expansion."""
+    group = compiler.create_expression_group('''
+angle_value = input_float("Angle", default=25.0)
+axiom = ls_axiom("F")
+angle = ls_angle(angle_value)
+parts = [axiom, ls_iterations(2), angle, ls_step(1)]
+geo = ls_system(*parts)
+output("Geometry", geo)
+''', "NFTest_LSystem_SemanticListStar")
+    assert group is not None
+    assert any(
+        item.name == "Angle"
+        for item in group.interface.items_tree
+        if getattr(item, "item_type", None) == "SOCKET"
+    )
 
 def test_static_koch_rewrite_and_baked_geometry():
     group = compiler.create_expression_group('''
@@ -273,12 +294,17 @@ output("Geometry", plant)
     assert abs(up.y + 1.0) < 1e-5
 
 
-def test_spatial_runtime_generated_resource_failure_is_atomic():
+def test_spatial_runtime_generated_resource_failure_is_atomic(monkeypatch):
     before_names = {mesh.name for mesh in bpy.data.meshes}
-    generated_resources._TEST_FAIL_AFTER_MESH_CREATE = True
-    try:
-        try:
-            compiler.create_expression_group('''
+    original_new_mesh = ExtensionBackendContext.new_generated_mesh
+
+    def fail_after_mesh(self, *, role, name_hint=""):
+        original_new_mesh(self, role=role, name_hint=name_hint)
+        raise RuntimeError("injected failure after transaction-owned mesh creation")
+
+    monkeypatch.setattr(ExtensionBackendContext, "new_generated_mesh", fail_after_mesh)
+    with pytest.raises(RuntimeError):
+        compiler.create_expression_group('''
 pitch = input_float("Pitch", default=35.0)
 geo = ls_system(
     ls_axiom("F&(pitch)F"),
@@ -289,12 +315,6 @@ geo = ls_system(
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Spatial_Resource_Fail")
-        except RuntimeError:
-            pass
-        else:
-            raise AssertionError("fault-injected spatial command mesh creation did not raise")
-    finally:
-        generated_resources._TEST_FAIL_AFTER_MESH_CREATE = False
     leaked = sorted(name for name in {mesh.name for mesh in bpy.data.meshes} - before_names if name.startswith("NodeForge."))
     assert leaked == []
 
@@ -836,7 +856,7 @@ output("Geometry", ls_points(geo, marker="Leaf"))
             helpers._cleanup_runtime_eval_objects(result[0], result[1], result[2])
 
 
-def test_runtime_grammar_resource_ownership_recompile_and_rollback():
+def test_runtime_grammar_resource_ownership_recompile_and_rollback(monkeypatch):
     source_a = '''
 iters = input_int("Iterations", default=2)
 geo = ls_system(ls_axiom("A"), ls_rule("A", "FA"), ls_iterations(iters), ls_angle(25), ls_step(1))
@@ -865,46 +885,82 @@ output("Geometry", geo)
         assert collection.get(name) is None
     assert {(ref.kind, ref.name) for ref in refs_b}.isdisjoint(old_names)
 
-    for flag in ("_TEST_FAIL_AFTER_MESH_CREATE", "_TEST_FAIL_AFTER_MESH_ATTRIBUTE_WRITE"):
-        before_mesh = set(bpy.data.meshes.keys()); before_obj = set(bpy.data.objects.keys())
-        setattr(generated_resources, flag, True)
-        try:
+    original_new_object = ExtensionBackendContext.new_generated_object
+
+    def fail_before_object(self, data=None, *, role, name_hint=""):
+        raise RuntimeError("injected failure after generated Mesh creation")
+
+    def fail_after_object(self, data=None, *, role, name_hint=""):
+        original_new_object(self, data, role=role, name_hint=name_hint)
+        raise RuntimeError("injected failure after generated Object creation")
+
+    for label, replacement in (("after_mesh", fail_before_object), ("after_object", fail_after_object)):
+        before_mesh = set(bpy.data.meshes.keys())
+        before_obj = set(bpy.data.objects.keys())
+        with monkeypatch.context() as patch:
+            patch.setattr(ExtensionBackendContext, "new_generated_object", replacement)
             with pytest.raises(RuntimeError):
-                compiler.create_expression_group(source_a, "NFTest_LSystem_Runtime_Resource_Fail_" + flag)
-        finally:
-            setattr(generated_resources, flag, False)
+                compiler.create_expression_group(source_a, "NFTest_LSystem_Runtime_Resource_Fail_" + label)
         assert [name for name in set(bpy.data.meshes.keys()) - before_mesh if name.startswith("NodeForge.")] == []
         assert [name for name in set(bpy.data.objects.keys()) - before_obj if name.startswith("NodeForge.")] == []
 
 
-def test_runtime_rule_index_attribute_write_failure_rolls_back_all_grammar_resources(monkeypatch):
-    import sys
-
+def test_runtime_rule_index_object_failure_rolls_back_all_grammar_resources(monkeypatch):
     source = """
 iters = input_int("Iterations", default=2)
 geo = ls_system(ls_axiom("A"), ls_rule("A", "FA"), ls_iterations(iters), ls_angle(25), ls_step(1))
 output("Geometry", geo)
 """
-    # Load the package module through the normal registry, then patch that exact
-    # loaded module rather than importing package internals through NodeForge core.
-    compiler.create_expression_group(source, "NFTest_LSystem_Runtime_RuleIndex_Preload")
-    runtime_module = next(
-        module for name, module in sys.modules.items()
-        if name.endswith(".runtime_dynamic") and hasattr(module, "runtime_dynamic_backend")
-    )
-    lsystem_resources = runtime_module.resources
-    original = lsystem_resources.create_runtime_rule_index_object
+    original_new_object = ExtensionBackendContext.new_generated_object
 
-    def fail_on_rule_index(transaction, table, *, name_hint):
-        generated_resources._TEST_FAIL_AFTER_MESH_ATTRIBUTE_WRITE = True
-        return original(transaction, table, name_hint=name_hint)
+    def fail_after_rule_index_object(self, data=None, *, role, name_hint=""):
+        obj = original_new_object(self, data, role=role, name_hint=name_hint)
+        if role == "runtime_rule_index_object":
+            raise RuntimeError("injected rule-index failure")
+        return obj
 
-    monkeypatch.setattr(lsystem_resources, "create_runtime_rule_index_object", fail_on_rule_index)
-    before_mesh = set(bpy.data.meshes.keys()); before_obj = set(bpy.data.objects.keys())
-    try:
-        with pytest.raises(RuntimeError):
-            compiler.create_expression_group(source, "NFTest_LSystem_Runtime_RuleIndex_Attribute_Fail")
-    finally:
-        generated_resources._TEST_FAIL_AFTER_MESH_ATTRIBUTE_WRITE = False
+    before_mesh = set(bpy.data.meshes.keys())
+    before_obj = set(bpy.data.objects.keys())
+    monkeypatch.setattr(ExtensionBackendContext, "new_generated_object", fail_after_rule_index_object)
+    with pytest.raises(RuntimeError):
+        compiler.create_expression_group(source, "NFTest_LSystem_Runtime_RuleIndex_Fail")
     assert [name for name in set(bpy.data.meshes.keys()) - before_mesh if name.startswith("NodeForge.")] == []
     assert [name for name in set(bpy.data.objects.keys()) - before_obj if name.startswith("NodeForge.")] == []
+
+
+def test_lsystem_generated_resources_roll_back_on_declared_result_validation_failure(monkeypatch):
+    source = """
+geo = ls_system(ls_axiom("F"), ls_iterations(0), ls_angle(25), ls_step(1))
+output("Geometry", geo)
+"""
+    original_invoke = ExtensionRegistry.invoke_implementation
+
+    def wrong_result(self, callable_id, *args, **kwargs):
+        result = original_invoke(self, callable_id, *args, **kwargs)
+        if callable_id.name == "ls_system":
+            return ExtensionBackendValue(result.socket, NFType.FLOAT)
+        return result
+
+    before_curve = set(bpy.data.curves.keys())
+    before_obj = set(bpy.data.objects.keys())
+    monkeypatch.setattr(ExtensionRegistry, "invoke_implementation", wrong_result)
+    with pytest.raises(CompileError, match="returned FLOAT, expected GEOMETRY"):
+        compiler.create_expression_group(source, "NFTest_LSystem_Result_Validation_Fail")
+    assert [name for name in set(bpy.data.curves.keys()) - before_curve if name.startswith("NodeForge.")] == []
+    assert [name for name in set(bpy.data.objects.keys()) - before_obj if name.startswith("NodeForge.")] == []
+
+
+def test_supported_lsystem_v2_never_calls_legacy_compiler_compile(monkeypatch):
+    source = """
+angle = input_float("Angle", default=25.0)
+part = ls_angle(angle)
+geo = ls_system(ls_axiom("F"), ls_iterations(0), part, ls_step(1))
+output("Geometry", geo)
+"""
+
+    def forbidden_compile(*_args, **_kwargs):
+        raise AssertionError("supported Extension API v2 path reached Compiler.compile()")
+
+    monkeypatch.setattr(compiler.Compiler, "compile", forbidden_compile)
+    group = compiler.create_expression_group(source, "NFTest_LSystem_No_Legacy_Compile")
+    assert group is not None
