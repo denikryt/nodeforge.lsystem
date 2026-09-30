@@ -1,10 +1,10 @@
 # NodeForge L-System
 
-NodeForge L-System is an installable package for NodeForge that builds static and runtime L-systems as Geometry Nodes. Version 2.1 uses NodeForge Extension API v2 end to end.
+NodeForge L-System is an installable package for NodeForge that builds static and runtime L-systems as Geometry Nodes. Version 2.3 uses NodeForge Extension API v2 end to end.
 
 ## Compatibility
 
-NodeForge L-System 2.2 supports NodeForge 0.62.0 through 0.62.1. Because the package contains executable Python extensions, Python permission must be enabled when it is imported.
+NodeForge L-System 2.3 supports NodeForge 0.62.0 through 0.62.2. Because the package contains executable Python extensions, Python permission must be enabled when it is imported.
 
 ## Public callables
 

@@ -139,10 +139,16 @@ def test_package_semantic_source_has_no_compiler_or_backend_carrier_dependency()
         assert token not in source
 
 
-def test_lsystem_21_manifest_requires_nodeforge_0620():
-    """The v2 L-System artifact is paired exactly with the Stage-35 core release."""
+def test_lsystem_23_manifest_accepts_nodeforge_0622():
+    """The v2 L-System 2.3 artifact accepts the legacy-free NodeForge 0.62.2 release."""
     manifest = packages.validate_package_root(ROOT)
     raw = json.loads((ROOT / "nodeforge_package.json").read_text(encoding="utf-8"))
-    assert manifest.version == "2.2"
+    assert manifest.version == "2.3"
     assert raw["nodeforge_min_version"] == "0.62.0"
-    assert raw["nodeforge_max_version"] == "0.62.1"
+    assert raw["nodeforge_max_version"] == "0.62.2"
+
+
+def test_stage36_negative_manifest_no_longer_caps_at_nodeforge_0621():
+    """The coordinated L-System artifact cannot remain pinned to the pre-cutover core patch."""
+    raw = json.loads((ROOT / "nodeforge_package.json").read_text(encoding="utf-8"))
+    assert raw["nodeforge_max_version"] != "0.62.1"

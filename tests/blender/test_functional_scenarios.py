@@ -950,7 +950,8 @@ output("Geometry", geo)
     assert [name for name in set(bpy.data.objects.keys()) - before_obj if name.startswith("NodeForge.")] == []
 
 
-def test_supported_lsystem_v2_never_calls_legacy_compiler_compile(monkeypatch):
+def test_supported_lsystem_v2_compiles_with_legacy_compiler_removed():
+    """The supported v2 scenario compiles normally against the legacy-free NodeForge core."""
     source = """
 angle = input_float("Angle", default=25.0)
 part = ls_angle(angle)
@@ -958,9 +959,5 @@ geo = ls_system(ls_axiom("F"), ls_iterations(0), part, ls_step(1))
 output("Geometry", geo)
 """
 
-    def forbidden_compile(*_args, **_kwargs):
-        raise AssertionError("supported Extension API v2 path reached Compiler.compile()")
-
-    monkeypatch.setattr(compiler.Compiler, "compile", forbidden_compile)
     group = compiler.create_expression_group(source, "NFTest_LSystem_No_Legacy_Compile")
     assert group is not None
