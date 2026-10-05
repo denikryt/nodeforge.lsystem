@@ -1,6 +1,6 @@
 """Runtime L-system rewriting and stream-sized spatial turtle backend.
 
-This module owns the topology-dynamic path used when ``ls_iterations`` receives
+This module owns the topology-dynamic path used when ``iterations`` receives
 an Int ``ExtensionBackendValue``. Grammar resources remain compile-time sized, while the active
 L-string and branch stack are variable-size Geometry Nodes data.
 """

@@ -146,15 +146,15 @@ def parse_stream(value: str, *, params: Mapping[str, object], markers: Mapping[s
 
 
 def parse_rule_predecessor(value: str) -> str:
-    """Validate an ls_rule predecessor for this stage's one-symbol rule contract."""
+    """Validate an rule predecessor for this stage's one-symbol rule contract."""
     if not isinstance(value, str):
-        raise CompileError("ls_rule() predecessor must be a compile-time string")
+        raise CompileError("rule() predecessor must be a compile-time string")
     if value == "":
-        raise CompileError("ls_rule() predecessor cannot be empty")
+        raise CompileError("rule() predecessor cannot be empty")
     if len(value) != 1:
-        raise CompileError("ls_rule() predecessor must be exactly one symbol")
+        raise CompileError("rule() predecessor must be exactly one symbol")
     if value not in BUILTIN_COMMANDS and not _LEGACY_SYMBOL_RE.match(value):
-        raise CompileError(f"ls_rule() predecessor contains invalid L-system symbol {value!r}")
+        raise CompileError(f"rule() predecessor contains invalid L-system symbol {value!r}")
     return value
 
 

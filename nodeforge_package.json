@@ -2,16 +2,17 @@
   "schema_version": 1,
   "id": "nodeforge.lsystem",
   "name": "NodeForge L-System",
-  "version": "2.3",
+  "version": "3.0",
   "author": "nachitima",
   "description": "L-system constructors.",
-  "nodeforge_min_version": "0.62.0",
-  "nodeforge_max_version": "0.62.2",
+  "nodeforge_min_version": "0.65.0",
+  "nodeforge_max_version": "0.65.1",
   "contents": {
     "examples": "examples",
     "systems": "systems"
   },
   "permissions": {
     "python": true
-  }
+  },
+  "import_name": "lsystem"
 }

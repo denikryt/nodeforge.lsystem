@@ -494,7 +494,7 @@ def _marker_selection(context, marker_name: str, *, x=0, y=0):
 def filter_marker_points(context, geometry: ExtensionBackendValue, marker_name: str, *, x=0, y=0):
     """Return only point-domain marker geometry matching *marker_name*."""
     if geometry.typ != NFType.GEOMETRY:
-        raise CompileError("ls_points() first argument must be Geometry")
+        raise CompileError("points() first argument must be Geometry")
     keep = _marker_selection(context, marker_name, x=x - 620, y=y)
     delete = _boolean_not(context, keep, x=x + 40, y=y)
     return _delete_geometry(context, geometry, delete, domain="POINT", x=x + 240, y=y)

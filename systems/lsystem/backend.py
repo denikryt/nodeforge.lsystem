@@ -28,7 +28,7 @@ from .turtle import interpret_static
 
 def ls_points(context, geometry, *, marker):
     """Filter points emitted for one validated L-System marker identifier."""
-    marker = validate_identifier(marker, "ls_points() marker")
+    marker = validate_identifier(marker, "points() marker")
     x, y = context.location
     return filter_marker_points(context, geometry, marker, x=x, y=y)
 

@@ -16,21 +16,21 @@ Numeric = Float | Int
 EXTENSION_API = 2
 
 EXTENSIONS = {
-    "ls_axiom": None,
-    "ls_rule": None,
-    "ls_iterations": None,
-    "ls_angle": None,
-    "ls_step": None,
-    "ls_param": None,
-    "ls_marker": None,
-    "ls_system": ".backend:ls_system",
-    "ls_points": ".backend:ls_points",
+    "axiom": None,
+    "rule": None,
+    "iterations": None,
+    "angle": None,
+    "step": None,
+    "param": None,
+    "marker": None,
+    "generate_lsystem": ".backend:ls_system",
+    "points": ".backend:ls_points",
 }
 
 
 @dataclass(frozen=True)
 class LSystemPart:
-    """Nominal base record accepted by ``ls_system(*parts)``."""
+    """Nominal base record accepted by ``generate_lsystem(*parts)``."""
 
 
 @dataclass(frozen=True)
@@ -117,12 +117,12 @@ class _LSystemSpec:
     markers: dict[str, LSystemMarker]
 
 
-def ls_axiom(value: Annotated[String, STATIC]) -> LSystemAxiom:
+def axiom(value: Annotated[String, STATIC]) -> LSystemAxiom:
     """Declare and validate one compile-time L-System axiom."""
     ...
 
 
-def ls_rule(
+def rule(
     symbol: Annotated[String, STATIC],
     replacement: Annotated[String, STATIC],
 ) -> LSystemRule:
@@ -130,22 +130,22 @@ def ls_rule(
     ...
 
 
-def ls_iterations(value: Annotated[Int, MIXED]) -> LSystemIterations:
+def iterations(value: Annotated[Int, MIXED]) -> LSystemIterations:
     """Declare a static or runtime rewrite-iteration count."""
     ...
 
 
-def ls_angle(value: Annotated[Numeric, MIXED]) -> LSystemAngle:
+def angle(value: Annotated[Numeric, MIXED]) -> LSystemAngle:
     """Declare a static or runtime turn angle in degrees."""
     ...
 
 
-def ls_step(value: Annotated[Numeric, MIXED]) -> LSystemStep:
+def step(value: Annotated[Numeric, MIXED]) -> LSystemStep:
     """Declare a static or runtime forward step distance."""
     ...
 
 
-def ls_param(
+def param(
     name: Annotated[String, STATIC],
     value: Annotated[Numeric, MIXED],
 ) -> LSystemParam:
@@ -153,7 +153,7 @@ def ls_param(
     ...
 
 
-def ls_marker(
+def marker(
     name: Annotated[String, STATIC],
     *parameter_names: Annotated[String, STATIC],
 ) -> LSystemMarker:
@@ -161,12 +161,12 @@ def ls_marker(
     ...
 
 
-def ls_system(*parts: LSystemPart) -> Geometry:
+def generate_lsystem(*parts: LSystemPart) -> Geometry:
     """Build Geometry from normalized L-System constructor records."""
     ...
 
 
-def ls_points(
+def points(
     geometry: Annotated[Geometry, RUNTIME],
     *,
     marker: Annotated[String, STATIC],

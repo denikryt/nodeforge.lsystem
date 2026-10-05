@@ -13,6 +13,12 @@ from NodeForge.errors import CompileError
 import helpers
 
 
+
+
+def _compile_lsystem_source(source, name):
+    """Compile one L-System scenario with the package namespace explicitly imported."""
+    return compiler.create_expression_group("from packages import lsystem\n" + source, name)
+
 def _manifest_refs(group):
     manifest = generated_resources.read_group_manifest(group)
     assert manifest is not None
@@ -59,7 +65,7 @@ def _eval_geometry(group, name, inputs=None, *, curve_to_mesh=True, output_name=
             and getattr(item, "in_out", None) == "INPUT"
             and item.name == socket_name
         )
-        modifier[identifier] = value
+        getattr(modifier.properties.inputs, identifier).value = value
     obj.update_tag()
     bpy.context.view_layer.update()
     snapshot = helpers._evaluated_mesh_snapshot(obj)
@@ -74,12 +80,12 @@ def _cleanup_evaluation(result):
 
 def test_semantic_part_list_literal_star_compiles_through_generic_extension_path():
     """A source list of persisted L-System semantic records compiles through generic semantic LIST expansion."""
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 angle_value = input_float("Angle", default=25.0)
-axiom = ls_axiom("F")
-angle = ls_angle(angle_value)
-parts = [axiom, ls_iterations(2), angle, ls_step(1)]
-geo = ls_system(*parts)
+axiom = axiom("F")
+angle = angle(angle_value)
+parts = [axiom, iterations(2), angle, step(1)]
+geo = generate_lsystem(*parts)
 output("Geometry", geo)
 ''', "NFTest_LSystem_SemanticListStar")
     assert group is not None
@@ -90,13 +96,13 @@ output("Geometry", geo)
     )
 
 def test_static_koch_rewrite_and_baked_geometry():
-    group = compiler.create_expression_group('''
-geo = ls_system(
-    ls_axiom("F"),
-    ls_rule("F", "F+F--F+F"),
-    ls_iterations(2),
-    ls_angle(60),
-    ls_step(1.0),
+    group = _compile_lsystem_source('''
+geo = generate_lsystem(
+    axiom("F"),
+    rule("F", "F+F--F+F"),
+    iterations(2),
+    angle(60),
+    step(1.0),
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Koch")
@@ -117,10 +123,10 @@ output("Geometry", geo)
 
 
 def test_runtime_branch_free_angle_and_step_update_geometry():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 angle = input_float("Angle", default=90.0)
 step = input_float("Step", default=1.0)
-geo = ls_system(ls_axiom("F+F"), ls_iterations(0), ls_angle(angle), ls_step(step))
+geo = generate_lsystem(axiom("F+F"), iterations(0), lsystem.angle(angle), lsystem.step(step))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_BranchFree")
     _refs, kinds = _resource_kinds(group)
@@ -137,10 +143,10 @@ output("Geometry", geo)
 
 
 def test_runtime_branch_stack_restores_position_and_heading():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 angle = input_float("Angle", default=90.0)
 step = input_float("Step", default=1.0)
-geo = ls_system(ls_axiom("F[+F]F[-F]F"), ls_iterations(0), ls_angle(angle), ls_step(step))
+geo = generate_lsystem(axiom("F[+F]F[-F]F"), iterations(0), lsystem.angle(angle), lsystem.step(step))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Branched")
     _refs, kinds = _resource_kinds(group)
@@ -159,16 +165,16 @@ output("Geometry", geo)
 
 
 def test_parameterized_draw_move_and_turn_modules():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 length = input_float("Length", default=2.0)
 turn = input_float("Turn", default=90.0)
-geo = ls_system(
-    ls_axiom("F(length)+(turn)f(length)F(length)-(turn)F(length)"),
-    ls_iterations(0),
-    ls_angle(30),
-    ls_step(1),
-    ls_param("length", length),
-    ls_param("turn", turn),
+geo = generate_lsystem(
+    axiom("F(length)+(turn)f(length)F(length)-(turn)F(length)"),
+    iterations(0),
+    angle(30),
+    step(1),
+    param("length", length),
+    param("turn", turn),
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Parametric_Modules")
@@ -183,19 +189,19 @@ output("Geometry", geo)
 
 
 def test_markers_parameters_ls_points_and_instances():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 size = input_float("Size", default=0.5)
-plant = ls_system(
-    ls_axiom("FLeaf(size)+(90)FBud"),
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(1),
-    ls_param("size", size),
-    ls_marker("Leaf", "size"),
-    ls_marker("Bud"),
+plant = generate_lsystem(
+    axiom("FLeaf(size)+(90)FBud"),
+    iterations(0),
+    angle(25),
+    step(1),
+    param("size", size),
+    marker("Leaf", "size"),
+    marker("Bud"),
 )
-leaf_points = ls_points(plant, marker="Leaf")
-bud_points = ls_points(plant, marker="Bud")
+leaf_points = lsystem.points(plant, marker="Leaf")
+bud_points = lsystem.points(plant, marker="Bud")
 leaves = instance_on_points(cube(0.2), leaf_points)
 buds = instance_on_points(cube(0.1), bud_points)
 output("Geometry", join(leaves, buds))
@@ -220,12 +226,12 @@ output("Geometry", join(leaves, buds))
 
 
 def test_static_spatial_turtle_pitch_roll_and_branch_restore():
-    group = compiler.create_expression_group('''
-geo = ls_system(
-    ls_axiom("F[&(90)F]F"),
-    ls_iterations(0),
-    ls_angle(90),
-    ls_step(1),
+    group = _compile_lsystem_source('''
+geo = generate_lsystem(
+    axiom("F[&(90)F]F"),
+    iterations(0),
+    angle(90),
+    step(1),
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Spatial")
@@ -242,17 +248,17 @@ output("Geometry", geo)
 
 
 def test_runtime_spatial_pitch_roll_updates_without_topology_change():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 pitch = input_float("Pitch", default=45.0)
 roll = input_float("Roll", default=90.0)
 step = input_float("Step", default=1.0)
-geo = ls_system(
-    ls_axiom("F/(roll)[&(pitch)F]F"),
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(step),
-    ls_param("pitch", pitch),
-    ls_param("roll", roll),
+geo = generate_lsystem(
+    axiom("F/(roll)[&(pitch)F]F"),
+    iterations(0),
+    angle(25),
+    lsystem.step(step),
+    param("pitch", pitch),
+    param("roll", roll),
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Spatial")
@@ -271,13 +277,13 @@ output("Geometry", geo)
 
 
 def test_static_marker_has_up_orientation_attribute():
-    group = compiler.create_expression_group('''
-plant = ls_system(
-    ls_axiom("/Leaf"),
-    ls_iterations(0),
-    ls_angle(90),
-    ls_step(1),
-    ls_marker("Leaf"),
+    group = _compile_lsystem_source('''
+plant = generate_lsystem(
+    axiom("/Leaf"),
+    iterations(0),
+    angle(90),
+    step(1),
+    marker("Leaf"),
 )
 output("Geometry", plant)
 ''', "NFTest_LSystem_Static_Marker_Up")
@@ -303,34 +309,35 @@ def test_spatial_runtime_generated_resource_failure_is_atomic(monkeypatch):
         raise RuntimeError("injected failure after transaction-owned mesh creation")
 
     monkeypatch.setattr(ExtensionBackendContext, "new_generated_mesh", fail_after_mesh)
-    with pytest.raises(RuntimeError):
-        compiler.create_expression_group('''
+    with pytest.raises(CompileError, match="injected") as error:
+        _compile_lsystem_source('''
 pitch = input_float("Pitch", default=35.0)
-geo = ls_system(
-    ls_axiom("F&(pitch)F"),
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(1),
-    ls_param("pitch", pitch),
+geo = generate_lsystem(
+    axiom("F&(pitch)F"),
+    iterations(0),
+    angle(25),
+    step(1),
+    param("pitch", pitch),
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Spatial_Resource_Fail")
+    assert isinstance(error.value.__cause__, RuntimeError)
     leaked = sorted(name for name in {mesh.name for mesh in bpy.data.meshes} - before_names if name.startswith("NodeForge."))
     assert leaked == []
 
 
 def test_runtime_marker_orientation_tracks_spatial_roll():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 roll = input_float("Roll", default=90.0)
-plant = ls_system(
-    ls_axiom("/(roll)Leaf"),
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(1),
-    ls_param("roll", roll),
-    ls_marker("Leaf"),
+plant = generate_lsystem(
+    axiom("/(roll)Leaf"),
+    iterations(0),
+    angle(25),
+    step(1),
+    param("roll", roll),
+    marker("Leaf"),
 )
-output("Geometry", ls_points(plant, marker="Leaf"))
+output("Geometry", lsystem.points(plant, marker="Leaf"))
 ''', "NFTest_LSystem_Runtime_Marker_Orientation")
     result = _eval_geometry(group, "NFTest_LSystem_Runtime_Marker_Orientation_Eval", {"Roll": 90}, curve_to_mesh=False)
     wrapper, obj, base_mesh, _snapshot = result
@@ -359,43 +366,43 @@ output("Geometry", ls_points(plant, marker="Leaf"))
 
 def test_spatial_rotation_parser_and_validation_contract():
     # Literal and declared runtime arguments are accepted for every new spatial rotation.
-    group = compiler.create_expression_group(r"""
+    group = _compile_lsystem_source(r"""
 pitch = input_float("Pitch", default=30.0)
 roll = input_float("Roll", default=40.0)
-geo = ls_system(
-    ls_axiom("^(30)&(pitch)/(roll)\\(roll)F"),
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(1),
-    ls_param("pitch", pitch),
-    ls_param("roll", roll),
+geo = generate_lsystem(
+    axiom("^(30)&(pitch)/(roll)\\(roll)F"),
+    iterations(0),
+    angle(25),
+    step(1),
+    param("pitch", pitch),
+    param("roll", roll),
 )
 output("Geometry", geo)
 """, "NFTest_LSystem_Spatial_Syntax")
     assert group is not None
 
     invalid_sources = (
-        'ls_axiom("^()F")',
-        'ls_axiom("&(1,2)F")',
-        'ls_axiom("/(missing)F")',
-        'ls_axiom("F?F")',
+        'axiom("^()F")',
+        'axiom("&(1,2)F")',
+        'axiom("/(missing)F")',
+        'axiom("F?F")',
     )
     for index, axiom_expr in enumerate(invalid_sources):
         with pytest.raises(CompileError):
-            compiler.create_expression_group(f"""
-geo = ls_system(
+            _compile_lsystem_source(f"""
+geo = generate_lsystem(
     {axiom_expr},
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(1),
+    iterations(0),
+    angle(25),
+    step(1),
 )
 output("Geometry", geo)
 """, f"NFTest_LSystem_Spatial_Invalid_{index}")
 
 
 def test_static_spatial_planar_compatibility_roll_and_noncommutativity():
-    planar = compiler.create_expression_group('''
-geo = ls_system(ls_axiom("F+F"), ls_iterations(0), ls_angle(90), ls_step(1))
+    planar = _compile_lsystem_source('''
+geo = generate_lsystem(axiom("F+F"), iterations(0), angle(90), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Planar_Compatibility")
     planar_eval = _eval_geometry(planar, "NFTest_LSystem_Static_Planar_Compatibility_Eval")
@@ -405,8 +412,8 @@ output("Geometry", geo)
         _cleanup_evaluation(planar_eval)
 
     # Roll alone does not move the turtle, but it changes the plane used by later pitch.
-    rolled = compiler.create_expression_group('''
-geo = ls_system(ls_axiom("/(90)^(90)F"), ls_iterations(0), ls_angle(25), ls_step(1))
+    rolled = _compile_lsystem_source('''
+geo = generate_lsystem(axiom("/(90)^(90)F"), iterations(0), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Roll")
     rolled_eval = _eval_geometry(rolled, "NFTest_LSystem_Static_Roll_Eval")
@@ -418,12 +425,12 @@ output("Geometry", geo)
     finally:
         _cleanup_evaluation(rolled_eval)
 
-    first = compiler.create_expression_group('''
-geo = ls_system(ls_axiom("+(90)^(90)F"), ls_iterations(0), ls_angle(25), ls_step(1))
+    first = _compile_lsystem_source('''
+geo = generate_lsystem(axiom("+(90)^(90)F"), iterations(0), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Rotation_Order_A")
-    second = compiler.create_expression_group('''
-geo = ls_system(ls_axiom("^(90)+(90)F"), ls_iterations(0), ls_angle(25), ls_step(1))
+    second = _compile_lsystem_source('''
+geo = generate_lsystem(axiom("^(90)+(90)F"), iterations(0), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Rotation_Order_B")
     first_eval = _eval_geometry(first, "NFTest_LSystem_Static_Rotation_Order_A_Eval")
@@ -436,14 +443,14 @@ output("Geometry", geo)
 
 
 def test_static_marker_orientation_restores_after_branch():
-    group = compiler.create_expression_group('''
-plant = ls_system(
-    ls_axiom("F[/(90)&(90)BranchLeaf]ParentLeaf"),
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(1),
-    ls_marker("BranchLeaf"),
-    ls_marker("ParentLeaf"),
+    group = _compile_lsystem_source('''
+plant = generate_lsystem(
+    axiom("F[/(90)&(90)BranchLeaf]ParentLeaf"),
+    iterations(0),
+    angle(25),
+    step(1),
+    marker("BranchLeaf"),
+    marker("ParentLeaf"),
 )
 output("Geometry", plant)
 ''', "NFTest_LSystem_Static_Marker_Branch_Restore")
@@ -464,17 +471,17 @@ output("Geometry", plant)
 
 
 def test_runtime_spiral_branch_roll_and_parent_restore_without_recompile():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 pitch = input_float("Pitch", default=45.0)
 roll = input_float("Roll", default=0.0)
 step = input_float("Step", default=1.0)
-geo = ls_system(
-    ls_axiom("F/(roll)[&(pitch)F]F"),
-    ls_iterations(0),
-    ls_angle(25),
-    ls_step(step),
-    ls_param("pitch", pitch),
-    ls_param("roll", roll),
+geo = generate_lsystem(
+    axiom("F/(roll)[&(pitch)F]F"),
+    iterations(0),
+    angle(25),
+    lsystem.step(step),
+    param("pitch", pitch),
+    param("roll", roll),
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Spiral_Branch")
@@ -495,21 +502,21 @@ output("Geometry", geo)
 def test_spatial_runtime_resource_ownership_and_recompile_cleanup():
     source_a = '''
 pitch = input_float("Pitch", default=35.0)
-geo = ls_system(ls_axiom("F&(pitch)F"), ls_iterations(0), ls_angle(25), ls_step(1), ls_param("pitch", pitch))
+geo = generate_lsystem(axiom("F&(pitch)F"), iterations(0), angle(25), step(1), param("pitch", pitch))
 output("Geometry", geo)
 '''
     source_b = '''
 roll = input_float("Roll", default=50.0)
-geo = ls_system(ls_axiom("F/(roll)F"), ls_iterations(0), ls_angle(25), ls_step(1), ls_param("roll", roll))
+geo = generate_lsystem(axiom("F/(roll)F"), iterations(0), angle(25), step(1), param("roll", roll))
 output("Geometry", geo)
 '''
-    group = compiler.create_expression_group(source_a, "NFTest_LSystem_Spatial_Resource_Ownership")
+    group = _compile_lsystem_source(source_a, "NFTest_LSystem_Spatial_Resource_Ownership")
     manifest_a, refs_a = _manifest_refs(group)
     assert {ref.kind for ref in refs_a} == {"MESH", "OBJECT"}
     assert any(ref.role == "spatial_runtime_command_mesh" for ref in refs_a)
     assert any(ref.role == "spatial_runtime_command_object" for ref in refs_a)
     old_names = {(ref.kind, ref.name) for ref in refs_a}
-    compiler.update_expression_group(group, source_b)
+    compiler.update_expression_group(group, "from packages import lsystem\n" + source_b)
     manifest_b, refs_b = _manifest_refs(group)
     assert manifest_b["owner_group_uuid"] == manifest_a["owner_group_uuid"]
     for kind, name in old_names:
@@ -537,15 +544,15 @@ def _attribute_scalars(mesh, name):
 
 
 def test_runtime_iterations_constructor_contract_and_backend_selection():
-    static = compiler.create_expression_group('''
-geo = ls_system(ls_axiom("F"), ls_iterations(1), ls_angle(25), ls_step(1))
+    static = _compile_lsystem_source('''
+geo = generate_lsystem(axiom("F"), iterations(1), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Iterations_Still_Static")
     assert not any(node.bl_idname == "GeometryNodeDuplicateElements" for node in static.nodes)
 
-    dynamic = compiler.create_expression_group('''
+    dynamic = _compile_lsystem_source('''
 iters = input_int("Iterations", default=2)
-geo = ls_system(ls_axiom("A"), ls_rule("A", "FA"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("A"), rule("A", "FA"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Iterations_Contract")
     assert len([node for node in dynamic.nodes if node.bl_idname == "GeometryNodeRepeatInput"]) == 2
@@ -555,16 +562,16 @@ output("Geometry", geo)
     assert len([node for node in dynamic.nodes if node.bl_idname == "GeometryNodeForeachGeometryElementInput"]) == 1
 
     invalid = (
-        'ls_iterations(-1)',
-        'ls_iterations(input_float("Bad", default=1.0))',
-        'ls_iterations(input_bool("Bad", default=True))',
-        'ls_iterations(True)',
-        'ls_iterations(cube(1.0))',
+        'iterations(-1)',
+        'iterations(input_float("Bad", default=1.0))',
+        'iterations(input_bool("Bad", default=True))',
+        'iterations(True)',
+        'iterations(cube(1.0))',
     )
     for index, iteration_expr in enumerate(invalid):
         with pytest.raises(CompileError):
-            compiler.create_expression_group(f'''
-geo = ls_system(ls_axiom("F"), {iteration_expr}, ls_angle(25), ls_step(1))
+            _compile_lsystem_source(f'''
+geo = generate_lsystem(axiom("F"), {iteration_expr}, angle(25), step(1))
 output("Geometry", geo)
 ''', f"NFTest_LSystem_Runtime_Iterations_Invalid_{index}")
 
@@ -588,8 +595,8 @@ def test_duplicate_elements_ordering_contract_blender_512():
 
     cmp0 = group.nodes.new("FunctionNodeCompare"); cmp0.data_type = "INT"; cmp0.operation = "EQUAL"
     cmp1 = group.nodes.new("FunctionNodeCompare"); cmp1.data_type = "INT"; cmp1.operation = "EQUAL"
-    group.links.new(index.outputs["Index"], cmp0.inputs[2]); cmp0.inputs[3].default_value = 0
-    group.links.new(index.outputs["Index"], cmp1.inputs[2]); cmp1.inputs[3].default_value = 1
+    group.links.new(index.outputs["Index"], cmp0.inputs["A"]); cmp0.inputs["B"].default_value = 0
+    group.links.new(index.outputs["Index"], cmp1.inputs["A"]); cmp1.inputs["B"].default_value = 1
     sw1 = group.nodes.new("GeometryNodeSwitch"); sw1.input_type = "INT"
     sw2 = group.nodes.new("GeometryNodeSwitch"); sw2.input_type = "INT"
     group.links.new(cmp1.outputs[0], sw1.inputs[0]); sw1.inputs[1].default_value = 3; sw1.inputs[2].default_value = 0
@@ -622,9 +629,9 @@ def test_duplicate_elements_ordering_contract_blender_512():
 
 
 def test_runtime_rewriting_changes_topology_without_recompile():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 iters = input_int("Iterations", default=2)
-geo = ls_system(ls_axiom("A"), ls_rule("A", "FA"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("A"), rule("A", "FA"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Topology")
     source = compiler._extract_group_source(group)
@@ -639,9 +646,9 @@ output("Geometry", geo)
         for result in results:
             _cleanup_evaluation(result)
 
-    branched = compiler.create_expression_group('''
+    branched = _compile_lsystem_source('''
 iters = input_int("Iterations", default=3)
-geo = ls_system(ls_axiom("A"), ls_rule("A", "F[+A][-A]"), ls_iterations(iters), ls_angle(45), ls_step(1))
+geo = generate_lsystem(axiom("A"), rule("A", "F[+A][-A]"), iterations(iters), angle(45), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Branch_Topology")
     counts = []
@@ -657,20 +664,20 @@ output("Geometry", geo)
 
 
 def test_runtime_native_rotation_matches_static_spatial_turtle():
-    static = compiler.create_expression_group('''
-geo = ls_system(
-    ls_axiom("A"),
-    ls_rule("A", "+(31)^(17)/(23)FA"),
-    ls_iterations(4), ls_angle(25), ls_step(0.7)
+    static = _compile_lsystem_source('''
+geo = generate_lsystem(
+    axiom("A"),
+    rule("A", "+(31)^(17)/(23)FA"),
+    iterations(4), angle(25), step(0.7)
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Static_Rotation_Reference")
-    dynamic = compiler.create_expression_group('''
+    dynamic = _compile_lsystem_source('''
 iters = input_int("Iterations", default=4)
-geo = ls_system(
-    ls_axiom("A"),
-    ls_rule("A", "+(31)^(17)/(23)FA"),
-    ls_iterations(iters), ls_angle(25), ls_step(0.7)
+geo = generate_lsystem(
+    axiom("A"),
+    rule("A", "+(31)^(17)/(23)FA"),
+    iterations(iters), angle(25), step(0.7)
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Native_Rotation")
@@ -686,14 +693,14 @@ output("Geometry", geo)
 
 
 def test_runtime_predecessor_metadata_isolation_and_parallel_rewrite():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 iters = input_int("Iterations", default=1)
-geo = ls_system(
-    ls_axiom("A"),
-    ls_rule("A", "BC"),
-    ls_rule("B", "XYZ"),
-    ls_rule("C", "Q"),
-    ls_iterations(iters), ls_angle(25), ls_step(1)
+geo = generate_lsystem(
+    axiom("A"),
+    rule("A", "BC"),
+    rule("B", "XYZ"),
+    rule("C", "Q"),
+    iterations(iters), angle(25), step(1)
 )
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Predecessor_Isolation")
@@ -716,9 +723,9 @@ output("Geometry", geo)
         finally:
             helpers._cleanup_runtime_eval_objects(wrapper, obj, base_mesh)
 
-    parallel = compiler.create_expression_group('''
+    parallel = _compile_lsystem_source('''
 iters = input_int("Iterations", default=1)
-geo = ls_system(ls_axiom("AB"), ls_rule("A", "AB"), ls_rule("B", "A"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("AB"), rule("A", "AB"), rule("B", "A"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Parallel")
     _expose_runtime_string_output(parallel)
@@ -736,10 +743,10 @@ output("Geometry", geo)
 
 
 def test_runtime_identity_deletion_and_parameter_payload_preservation():
-    deletion = compiler.create_expression_group('''
+    deletion = _compile_lsystem_source('''
 iters = input_int("Iterations", default=1)
-geo = ls_system(ls_axiom("AB"), ls_rule("A", ""), ls_iterations(iters), ls_angle(25), ls_step(1), ls_marker("B"))
-output("Geometry", ls_points(geo, marker="B"))
+geo = generate_lsystem(axiom("AB"), rule("A", ""), iterations(iters), angle(25), step(1), marker("B"))
+output("Geometry", lsystem.points(geo, marker="B"))
 ''', "NFTest_LSystem_Runtime_Deletion")
     for n in (0, 1):
         result = _eval_geometry(deletion, f"NFTest_LSystem_Runtime_Deletion_{n}", {"Iterations": n}, curve_to_mesh=False)
@@ -748,9 +755,9 @@ output("Geometry", ls_points(geo, marker="B"))
         finally:
             _cleanup_evaluation(result)
 
-    identity = compiler.create_expression_group('''
+    identity = _compile_lsystem_source('''
 iters = input_int("Iterations", default=3)
-geo = ls_system(ls_axiom("A"), ls_rule("A", "F(0.25)A"), ls_iterations(iters), ls_angle(25), ls_step(9))
+geo = generate_lsystem(axiom("A"), rule("A", "F(0.25)A"), iterations(iters), angle(25), step(9))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Identity_Payload")
     result = _eval_geometry(identity, "NFTest_LSystem_Runtime_Identity_Payload_Eval", {"Iterations": 3})
@@ -763,9 +770,9 @@ output("Geometry", geo)
 
 
 def test_runtime_bracket_invariant_and_dynamic_spatial_stack():
-    accepted = compiler.create_expression_group('''
+    accepted = _compile_lsystem_source('''
 iters = input_int("Iterations", default=3)
-geo = ls_system(ls_axiom("A"), ls_rule("A", "F[&(45)/(30)A]A"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("A"), rule("A", "F[&(45)/(30)A]A"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 ''', "NFTest_LSystem_Runtime_Spatial_Stack")
     stack_results = [
@@ -780,24 +787,24 @@ output("Geometry", geo)
             _cleanup_evaluation(result)
 
     bad_sources = (
-        'ls_axiom("[]"), ls_rule("[", "")',
-        'ls_axiom("A"), ls_rule("A", "[F")',
-        'ls_axiom("A"), ls_rule("A", "F]")',
-        'ls_axiom("]A"), ls_rule("A", "A")',
+        'axiom("[]"), rule("[", "")',
+        'axiom("A"), rule("A", "[F")',
+        'axiom("A"), rule("A", "F]")',
+        'axiom("]A"), rule("A", "A")',
     )
     for index, parts in enumerate(bad_sources):
         with pytest.raises(CompileError):
-            compiler.create_expression_group(f'''
+            _compile_lsystem_source(f'''
 iters = input_int("Iterations", default=1)
-geo = ls_system({parts}, ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem({parts}, iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 ''', f"NFTest_LSystem_Runtime_Bracket_Invalid_{index}")
 
     # Explicit stack-shape smoke cases exercise nested and sibling pop/reuse behavior.
     for index, axiom in enumerate(("[]", "[[]]", "[][]", "[[][[]]]")):
-        group = compiler.create_expression_group(f'''
+        group = _compile_lsystem_source(f'''
 iters = input_int("Iterations", default=0)
-geo = ls_system(ls_axiom("{axiom}F"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("{axiom}F"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 ''', f"NFTest_LSystem_Runtime_StackShape_{index}")
         result = _eval_geometry(group, f"NFTest_LSystem_Runtime_StackShape_Eval_{index}", {"Iterations": 0})
@@ -816,18 +823,18 @@ output("Geometry", geo)
 
 
 def test_runtime_markers_preserve_schema_iteration_orientation_and_params():
-    group = compiler.create_expression_group('''
+    group = _compile_lsystem_source('''
 iters = input_int("Iterations", default=2)
 roll = input_float("Roll", default=90.0)
 size = input_float("Size", default=0.5)
-geo = ls_system(
-    ls_axiom("A"),
-    ls_rule("A", "/(roll)FLeaf(size)A"),
-    ls_iterations(iters), ls_angle(25), ls_step(1),
-    ls_param("roll", roll), ls_param("size", size),
-    ls_marker("Leaf", "size")
+geo = generate_lsystem(
+    axiom("A"),
+    rule("A", "/(roll)FLeaf(size)A"),
+    iterations(iters), angle(25), step(1),
+    param("roll", roll), param("size", size),
+    marker("Leaf", "size")
 )
-output("Geometry", ls_points(geo, marker="Leaf"))
+output("Geometry", lsystem.points(geo, marker="Leaf"))
 ''', "NFTest_LSystem_Runtime_Marker_Schema")
     results = [
         _eval_geometry(group, "NFTest_LSystem_Runtime_Marker_Schema_Eval_0", {"Iterations": 2, "Roll": 0, "Size": 0.75}, curve_to_mesh=False),
@@ -859,15 +866,15 @@ output("Geometry", ls_points(geo, marker="Leaf"))
 def test_runtime_grammar_resource_ownership_recompile_and_rollback(monkeypatch):
     source_a = '''
 iters = input_int("Iterations", default=2)
-geo = ls_system(ls_axiom("A"), ls_rule("A", "FA"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("A"), rule("A", "FA"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 '''
     source_b = '''
 iters = input_int("Iterations", default=2)
-geo = ls_system(ls_axiom("B"), ls_rule("B", "F[+B][-B]"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("B"), rule("B", "F[+B][-B]"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 '''
-    group = compiler.create_expression_group(source_a, "NFTest_LSystem_Runtime_Resource_Ownership")
+    group = _compile_lsystem_source(source_a, "NFTest_LSystem_Runtime_Resource_Ownership")
     manifest_a, refs_a = _manifest_refs(group)
     roles = {ref.role for ref in refs_a}
     assert roles == {
@@ -877,7 +884,7 @@ output("Geometry", geo)
         "runtime_module_definitions_mesh", "runtime_module_definitions_object",
     }
     old_names = {(ref.kind, ref.name) for ref in refs_a}
-    compiler.update_expression_group(group, source_b)
+    compiler.update_expression_group(group, "from packages import lsystem\n" + source_b)
     manifest_b, refs_b = _manifest_refs(group)
     assert manifest_b["owner_group_uuid"] == manifest_a["owner_group_uuid"]
     for kind, name in old_names:
@@ -899,8 +906,9 @@ output("Geometry", geo)
         before_obj = set(bpy.data.objects.keys())
         with monkeypatch.context() as patch:
             patch.setattr(ExtensionBackendContext, "new_generated_object", replacement)
-            with pytest.raises(RuntimeError):
-                compiler.create_expression_group(source_a, "NFTest_LSystem_Runtime_Resource_Fail_" + label)
+            with pytest.raises(CompileError, match="injected") as error:
+                _compile_lsystem_source(source_a, "NFTest_LSystem_Runtime_Resource_Fail_" + label)
+        assert isinstance(error.value.__cause__, RuntimeError)
         assert [name for name in set(bpy.data.meshes.keys()) - before_mesh if name.startswith("NodeForge.")] == []
         assert [name for name in set(bpy.data.objects.keys()) - before_obj if name.startswith("NodeForge.")] == []
 
@@ -908,7 +916,7 @@ output("Geometry", geo)
 def test_runtime_rule_index_object_failure_rolls_back_all_grammar_resources(monkeypatch):
     source = """
 iters = input_int("Iterations", default=2)
-geo = ls_system(ls_axiom("A"), ls_rule("A", "FA"), ls_iterations(iters), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("A"), rule("A", "FA"), iterations(iters), angle(25), step(1))
 output("Geometry", geo)
 """
     original_new_object = ExtensionBackendContext.new_generated_object
@@ -922,22 +930,23 @@ output("Geometry", geo)
     before_mesh = set(bpy.data.meshes.keys())
     before_obj = set(bpy.data.objects.keys())
     monkeypatch.setattr(ExtensionBackendContext, "new_generated_object", fail_after_rule_index_object)
-    with pytest.raises(RuntimeError):
-        compiler.create_expression_group(source, "NFTest_LSystem_Runtime_RuleIndex_Fail")
+    with pytest.raises(CompileError, match="injected") as error:
+        _compile_lsystem_source(source, "NFTest_LSystem_Runtime_RuleIndex_Fail")
+    assert isinstance(error.value.__cause__, RuntimeError)
     assert [name for name in set(bpy.data.meshes.keys()) - before_mesh if name.startswith("NodeForge.")] == []
     assert [name for name in set(bpy.data.objects.keys()) - before_obj if name.startswith("NodeForge.")] == []
 
 
 def test_lsystem_generated_resources_roll_back_on_declared_result_validation_failure(monkeypatch):
     source = """
-geo = ls_system(ls_axiom("F"), ls_iterations(0), ls_angle(25), ls_step(1))
+geo = generate_lsystem(axiom("F"), iterations(0), angle(25), step(1))
 output("Geometry", geo)
 """
     original_invoke = ExtensionRegistry.invoke_implementation
 
     def wrong_result(self, callable_id, *args, **kwargs):
         result = original_invoke(self, callable_id, *args, **kwargs)
-        if callable_id.name == "ls_system":
+        if callable_id.name == "generate_lsystem":
             return ExtensionBackendValue(result.socket, NFType.FLOAT)
         return result
 
@@ -945,7 +954,7 @@ output("Geometry", geo)
     before_obj = set(bpy.data.objects.keys())
     monkeypatch.setattr(ExtensionRegistry, "invoke_implementation", wrong_result)
     with pytest.raises(CompileError, match="returned FLOAT, expected GEOMETRY"):
-        compiler.create_expression_group(source, "NFTest_LSystem_Result_Validation_Fail")
+        _compile_lsystem_source(source, "NFTest_LSystem_Result_Validation_Fail")
     assert [name for name in set(bpy.data.curves.keys()) - before_curve if name.startswith("NodeForge.")] == []
     assert [name for name in set(bpy.data.objects.keys()) - before_obj if name.startswith("NodeForge.")] == []
 
@@ -954,10 +963,10 @@ def test_supported_lsystem_v2_compiles_with_legacy_compiler_removed():
     """The supported v2 scenario compiles normally against the legacy-free NodeForge core."""
     source = """
 angle = input_float("Angle", default=25.0)
-part = ls_angle(angle)
-geo = ls_system(ls_axiom("F"), ls_iterations(0), part, ls_step(1))
+part = lsystem.angle(angle)
+geo = generate_lsystem(axiom("F"), iterations(0), part, step(1))
 output("Geometry", geo)
 """
 
-    group = compiler.create_expression_group(source, "NFTest_LSystem_No_Legacy_Compile")
+    group = _compile_lsystem_source(source, "NFTest_LSystem_No_Legacy_Compile")
     assert group is not None

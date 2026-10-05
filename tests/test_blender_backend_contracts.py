@@ -1,4 +1,4 @@
-"""Regression coverage for the Stage 35 Blender-5.2 backend simplification."""
+"""Regression coverage for the Blender 5.2 backend contracts."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class _GetOnlySockets:
 def _load_resources(monkeypatch, bpy_module):
     """Load resources.py with an explicit fake bpy module."""
     monkeypatch.setitem(sys.modules, "bpy", bpy_module)
-    module_name = "_stage35_resources_test"
+    module_name = "_generated_resources_test"
     sys.modules.pop(module_name, None)
     spec = importlib.util.spec_from_file_location(module_name, LSYSTEM / "resources.py")
     assert spec is not None and spec.loader is not None
@@ -53,7 +53,7 @@ def _load_resources(monkeypatch, bpy_module):
 
 # Simplification invariant A — marker runtime dependencies are explicit arguments,
 # not one-off structural pseudo-types.
-def test_stage35_simplification_marker_params_have_explicit_dependencies():
+def test_marker_params_have_explicit_dependencies():
     parameters = inspect.signature(backends._store_runtime_marker_params).parameters
     assert tuple(parameters) == (
         "context",
@@ -65,14 +65,14 @@ def test_stage35_simplification_marker_params_have_explicit_dependencies():
     )
 
 
-def test_stage35_simplification_marker_param_pseudo_types_are_absent():
+def test_marker_param_pseudo_types_are_absent():
     source = (LSYSTEM / "backends.py").read_text(encoding="utf-8") + (LSYSTEM / "runtime_dynamic.py").read_text(encoding="utf-8")
     assert "StaticMarkerParamTable" not in source
     assert "DynamicMarkerParamTable" not in source
 
 
 # Simplification invariant B — Blender 5.2 socket contracts are direct and fail-fast.
-def test_stage35_simplification_socket_lookup_uses_blender_52_name_contract():
+def test_socket_lookup_uses_blender_52_name_contract():
     expected = object()
     sockets = _GetOnlySockets({"Geometry": expected})
     node = SimpleNamespace(bl_idname="GeometryNodeStoreNamedAttribute")
@@ -80,7 +80,7 @@ def test_stage35_simplification_socket_lookup_uses_blender_52_name_contract():
     assert sockets.get_calls == ["Geometry"]
 
 
-def test_stage35_simplification_missing_blender_52_socket_is_error_without_fallback():
+def test_missing_blender_52_socket_is_error_without_fallback():
     sockets = _GetOnlySockets({})
     node = SimpleNamespace(bl_idname="GeometryNodeStoreNamedAttribute")
     with pytest.raises(CompileError, match="Blender 5.2 contract"):
@@ -89,7 +89,7 @@ def test_stage35_simplification_missing_blender_52_socket_is_error_without_fallb
 
 
 # Simplification invariant C — context.value() is the sole raw-socket -> extension-value boundary.
-def test_stage35_simplification_backend_wraps_outputs_through_context_value():
+def test_backend_wraps_outputs_through_context_value():
     output = SimpleNamespace(default_value=None)
     node = SimpleNamespace(outputs=[output], location=None, label=None, integer=None)
     created = []
@@ -111,7 +111,7 @@ def test_stage35_simplification_backend_wraps_outputs_through_context_value():
     assert result == (output, NFType.INT)
 
 
-def test_stage35_simplification_backend_has_no_direct_extension_value_construction():
+def test_backend_has_no_direct_extension_value_construction():
     for filename in ("backends.py", "runtime_dynamic.py"):
         source = (LSYSTEM / filename).read_text(encoding="utf-8")
         assert "ExtensionBackendValue(" not in source
@@ -120,7 +120,7 @@ def test_stage35_simplification_backend_has_no_direct_extension_value_constructi
 
 # Simplification invariant D — generated-resource writes use the direct Blender 5.2
 # bulk-write contract and propagate physical API errors to the outer transaction.
-def test_stage35_simplification_attribute_bulk_write_is_direct(monkeypatch):
+def test_attribute_bulk_write_is_direct(monkeypatch):
     resources = _load_resources(monkeypatch, SimpleNamespace())
 
     class _Data:
@@ -148,7 +148,7 @@ def test_stage35_simplification_attribute_bulk_write_is_direct(monkeypatch):
     assert vector_data.calls == [("vector", (1.0, 2.0, 3.0, 4.0, 5.0, 6.0))]
 
 
-def test_stage35_simplification_attribute_bulk_write_propagates_blender_error(monkeypatch):
+def test_attribute_bulk_write_propagates_blender_error(monkeypatch):
     resources = _load_resources(monkeypatch, SimpleNamespace())
 
     class _Data:
@@ -165,14 +165,14 @@ def test_stage35_simplification_attribute_bulk_write_propagates_blender_error(mo
 
 # Simplification invariant E — documented generated-object properties are assigned
 # directly; setter failures are not swallowed.
-def test_stage35_simplification_generated_object_properties_are_direct(monkeypatch):
+def test_generated_object_properties_are_direct(monkeypatch):
     resources = _load_resources(monkeypatch, SimpleNamespace())
     obj = SimpleNamespace(hide_viewport=False, hide_render=False, hide_select=False, use_fake_user=True)
     resources._hide_generated_object(obj)
     assert (obj.hide_viewport, obj.hide_render, obj.hide_select, obj.use_fake_user) == (True, True, True, False)
 
 
-def test_stage35_simplification_generated_object_property_error_propagates(monkeypatch):
+def test_generated_object_property_error_propagates(monkeypatch):
     resources = _load_resources(monkeypatch, SimpleNamespace())
 
     class _RejectingObject:
@@ -185,7 +185,7 @@ def test_stage35_simplification_generated_object_property_error_propagates(monke
         resources._hide_generated_object(_RejectingObject())
 
 
-def test_stage35_simplification_backend_contains_no_version_fallback_control_flow():
+def test_backend_contains_no_version_fallback_control_flow():
     for filename in ("backends.py", "runtime_dynamic.py", "resources.py"):
         source = (LSYSTEM / filename).read_text(encoding="utf-8")
         assert not re.search(r"(?m)^\s*try\s*:", source)
