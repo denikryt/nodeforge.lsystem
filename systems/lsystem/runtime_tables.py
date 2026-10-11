@@ -265,7 +265,6 @@ def build_branch_free_command_table(stream, *, angle_degrees=90.0, step=1.0, mar
             continue
         start_i = len(vertices)
         add_point(heading_old=heading)
-        start_heading = heading
         end_heading = heading
         old_move = 0.0
         edge_draw = False
@@ -346,9 +345,10 @@ def build_branch_aware_command_table(stream, *, angle_degrees=90.0, step=1.0, ma
     def new_path(parent_path_id: int, parent_attach_point_index: int, depth: int, initial_heading: int, *, heading_static=0.0, heading_coeffs=None) -> _PathState:
         path_id = len(paths)
         heading_coeffs = dict(heading_coeffs or {})
-        dummy = _PathState(path_id, parent_path_id, parent_attach_point_index, -1, depth, initial_heading, -1, initial_heading, heading_static, dict(heading_coeffs))
-        anchor_index = add_point(dummy, move=0.0, heading=initial_heading, anchor=True, turn_static=heading_static)
-        state = _PathState(path_id, parent_path_id, parent_attach_point_index, anchor_index, depth, initial_heading, anchor_index, initial_heading, heading_static, dict(heading_coeffs))
+        state = _PathState(path_id, parent_path_id, parent_attach_point_index, -1, depth, initial_heading, -1, initial_heading, heading_static, heading_coeffs)
+        anchor_index = add_point(state, move=0.0, heading=initial_heading, anchor=True, turn_static=heading_static)
+        state.anchor_point_index = anchor_index
+        state.current_point_index = anchor_index
         paths.append(BranchPathRecord(path_id, parent_path_id, parent_attach_point_index, anchor_index, depth, initial_heading))
         for slot_idx, coeff in sorted(heading_coeffs.items()):
             if coeff:
