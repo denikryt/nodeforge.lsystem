@@ -4,11 +4,23 @@ NodeForge L-System is an installable package for NodeForge that builds static an
 
 ## Compatibility
 
-NodeForge L-System 3.0 supports NodeForge 0.65.0 Because the package contains executable Python extensions, Python permission must be enabled when it is imported.
+NodeForge L-System 4.0 supports NodeForge 0.65.0–0.65.4. Because the package contains executable Python extensions, Python permission must be enabled when it is imported.
 
 ## Public callables
 
-The package provides semantic constructors `axiom()`, `rule()`, `iterations()`, `angle()`, `step()`, `param()`, and `marker()`. `generate_lsystem()` consumes those package-defined semantic records and returns Geometry. `points()` extracts marker points from generated L-System geometry.
+The package provides semantic constructors `axiom()`, `rule()`, `iterations()`, `angle()`, `step()`, `param()`, and `marker()`. `ls.system()` consumes those package-defined semantic records and returns Geometry. `points()` extracts marker points from generated L-System geometry.
+
+```python
+from packages import lsystem as ls
+
+geometry = ls.system(
+    ls.axiom("F"),
+    ls.iterations(1),
+    ls.angle(25),
+    ls.step(1),
+)
+output("Geometry", geometry)
+```
 
 ## Extension architecture
 

@@ -11,7 +11,7 @@ import pytest
 from NodeForge import packages
 from NodeForge.errors import CompileError
 from NodeForge.evaluation_modes import EvaluationMode
-from NodeForge.extension_registry import ExtensionOwnerSession, capture_owner_code_snapshot
+from NodeForge.extensions.registry import ExtensionOwnerSession, capture_owner_code_snapshot
 from NodeForge.nf_types import NFType
 
 
@@ -38,14 +38,14 @@ def test_interface_declares_complete_v2_inventory_and_execution_forms():
     by_name = {callable_id.name: callable_id for callable_id in families}
     assert set(by_name) == {
         "axiom", "rule", "iterations", "angle", "step",
-        "param", "marker", "generate_lsystem", "points",
+        "param", "marker", "system", "points",
     }
     for name in {"axiom", "rule", "iterations", "angle", "step", "param", "marker"}:
         assert refs[by_name[name]] is None
         assert session.semantic_return_type(by_name[name]).kind == "RECORD"
-    assert refs[by_name["generate_lsystem"]].module == ".backend"
-    assert refs[by_name["generate_lsystem"]].attribute == "ls_system"
-    assert session.semantic_return_type(by_name["generate_lsystem"]).record_type.name == "_LSystemSpec"
+    assert refs[by_name["system"]].module == ".backend"
+    assert refs[by_name["system"]].attribute == "ls_system"
+    assert session.semantic_return_type(by_name["system"]).record_type.name == "_LSystemSpec"
     assert refs[by_name["points"]].attribute == "ls_points"
     assert session.semantic_return_type(by_name["points"]) is None
 
@@ -77,7 +77,7 @@ def test_semantic_constructors_and_ls_system_normalize_one_private_spec():
     param = session.invoke_semantic(_callable_id(session, "param"), "length", 2.0)
     marker = session.invoke_semantic(_callable_id(session, "marker"), "Leaf", "length")
     spec = session.invoke_semantic(
-        _callable_id(session, "generate_lsystem"),
+        _callable_id(session, "system"),
         axiom,
         rule,
         iterations,
@@ -104,9 +104,9 @@ def test_semantic_normalization_rejects_duplicate_or_missing_required_parts():
     angle = session.invoke_semantic(cid("angle"), 25.0)
     step = session.invoke_semantic(cid("step"), 1.0)
     with pytest.raises(CompileError, match="duplicate axiom"):
-        session.invoke_semantic(cid("generate_lsystem"), axiom, axiom, iterations, angle, step)
+        session.invoke_semantic(cid("system"), axiom, axiom, iterations, angle, step)
     with pytest.raises(CompileError, match=r"requires step"):
-        session.invoke_semantic(cid("generate_lsystem"), axiom, iterations, angle)
+        session.invoke_semantic(cid("system"), axiom, iterations, angle)
 
 
 def test_marker_semantics_preserve_identity_and_reject_reserved_or_duplicate_parameters():
@@ -139,14 +139,14 @@ def test_package_semantic_source_has_no_compiler_or_backend_carrier_dependency()
         assert token not in source
 
 
-def test_lsystem_301_manifest_targets_nodeforge_065x():
-    """The L-System 3.0.1 artifact admits the NodeForge 0.65.x patch line."""
+def test_lsystem_manifest_targets_nodeforge_065x():
+    """The L-System 4.0 artifact admits the NodeForge 0.65.x patch line."""
     manifest = packages.validate_package_root(ROOT)
     raw = json.loads((ROOT / "nodeforge_package.json").read_text(encoding="utf-8"))
-    assert manifest.version == "3.0.1"
+    assert manifest.version == "4.0"
     assert manifest.import_name == "lsystem"
     assert raw["nodeforge_min_version"] == "0.65.0"
-    assert raw["nodeforge_max_version"] == "0.65.1"
+    assert raw["nodeforge_max_version"] == "0.65.4"
 
 
 def test_manifest_no_longer_caps_at_nodeforge_0621():
@@ -158,14 +158,14 @@ def test_examples_qualify_package_callables_shadowed_by_source_values():
     """Package examples qualify constructors when a same-name source value owns the bare spelling."""
     root = Path(__file__).resolve().parents[1] / "examples"
     expected = {
-        "dragon_curve.nf": ("lsystem.angle(angle)", "lsystem.step(step)"),
-        "fractal_plant.nf": ("lsystem.angle(angle)", "lsystem.step(step)"),
-        "koch_curve.nf": ("lsystem.angle(angle)", "lsystem.step(step)"),
-        "spatial_plant.nf": ("lsystem.step(step)",),
+        "dragon_curve.nf": ("ls.angle(angle)", "ls.step(step)"),
+        "fractal_plant.nf": ("ls.angle(angle)", "ls.step(step)"),
+        "koch_curve.nf": ("ls.angle(angle)", "ls.step(step)"),
+        "spatial_plant.nf": ("ls.step(step)",),
     }
     for filename, calls in expected.items():
         source = (root / filename).read_text(encoding="utf-8")
         for call in calls:
             assert call in source
-    assert "angle(angle)" not in (root / "koch_curve.nf").read_text(encoding="utf-8").replace("lsystem.angle(angle)", "")
-    assert "step(step)" not in (root / "dragon_curve.nf").read_text(encoding="utf-8").replace("lsystem.step(step)", "")
+    assert "angle(angle)" not in (root / "koch_curve.nf").read_text(encoding="utf-8").replace("ls.angle(angle)", "")
+    assert "step(step)" not in (root / "dragon_curve.nf").read_text(encoding="utf-8").replace("ls.step(step)", "")

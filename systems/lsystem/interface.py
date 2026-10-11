@@ -23,14 +23,14 @@ EXTENSIONS = {
     "step": None,
     "param": None,
     "marker": None,
-    "generate_lsystem": ".backend:ls_system",
+    "system": ".backend:ls_system",
     "points": ".backend:ls_points",
 }
 
 
 @dataclass(frozen=True)
 class LSystemPart:
-    """Nominal base record accepted by ``generate_lsystem(*parts)``."""
+    """Nominal base record accepted by ``system(*parts)``."""
 
 
 @dataclass(frozen=True)
@@ -161,7 +161,7 @@ def marker(
     ...
 
 
-def generate_lsystem(*parts: LSystemPart) -> Geometry:
+def system(*parts: LSystemPart) -> Geometry:
     """Build Geometry from normalized L-System constructor records."""
     ...
 

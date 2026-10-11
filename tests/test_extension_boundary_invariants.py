@@ -10,14 +10,14 @@ from types import SimpleNamespace
 import pytest
 
 import NodeForge
-from NodeForge.blender_extension_backend import _validate_result
+from NodeForge.blender.extension_backend import _validate_result
 from NodeForge.compiler_identities import GroupCompilationIdentity
 from NodeForge.errors import CompileError
 from NodeForge.extension_api import ExtensionBackendValue
-from NodeForge.extension_contracts import TypeSpec
-from NodeForge.extension_registry import ExtensionOwnerSession, ExtensionRegistry, capture_owner_code_snapshot
+from NodeForge.extensions.contracts import TypeSpec
+from NodeForge.extensions.registry import ExtensionOwnerSession, ExtensionRegistry, capture_owner_code_snapshot
 from NodeForge.extension_semantic_api import RuntimeRef
-from NodeForge.extension_values import ExtensionDependencySlot, ExtensionValue, pack_value, unpack_value
+from NodeForge.extensions.values import ExtensionDependencySlot, ExtensionValue, pack_value, unpack_value
 from NodeForge.nf_types import NFType
 from NodeForge.resolved_environment import (
     PackageCallableExport,
@@ -25,8 +25,9 @@ from NodeForge.resolved_environment import (
     ResolvedEnvironment,
     ResolvedPackageNamespace,
 )
-from NodeForge.semantic_group import analyze_group_source
-from NodeForge.semantic_ir import IRCall, IRCallableKind
+from NodeForge.semantic.group import analyze_group_source
+from NodeForge.semantic.ir import IRCall, IRCallableKind
+from NodeForge.semantic.source_callable_session import SourceCallableSession
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +59,7 @@ def _registry_environment():
         "nodeforge.lsystem",
         "lsystem",
         "NodeForge L-System",
-        "3.0.1",
+        "4.0",
         exports,
     )
     environment = ResolvedEnvironment(
@@ -91,7 +92,7 @@ def test_v2_interface_is_complete():
     families, _ = session.normalize_interface()
     assert {callable_id.name for callable_id in families} == {
         "axiom", "rule", "iterations", "angle", "step",
-        "param", "marker", "generate_lsystem", "points",
+        "param", "marker", "system", "points",
     }
 
 
@@ -147,7 +148,7 @@ def test_backend_module_has_no_semantic_or_compiler_carriers():
         assert forbidden not in source
 
 
-# Invariant 4 — semantic generate_lsystem is the single package normalization authority.
+# Invariant 4 — semantic system is the single package normalization authority.
 def test_ls_system_returns_declared_private_spec():
     session, _registry, by_name, _environment = _registry_environment()
     parts = [
@@ -156,14 +157,14 @@ def test_ls_system_returns_declared_private_spec():
         session.invoke_semantic(by_name["angle"], 25),
         session.invoke_semantic(by_name["step"], 1),
     ]
-    spec = session.invoke_semantic(by_name["generate_lsystem"], *parts)
+    spec = session.invoke_semantic(by_name["system"], *parts)
     assert type(spec).__name__ == "_LSystemSpec"
     assert spec.angle == 25.0 and spec.step == 1.0
 
 
 def test_parallel_legacy_semantic_authority_is_absent():
     semantic_source = (OWNER / "semantic.py").read_text(encoding="utf-8")
-    assert "def generate_lsystem" in semantic_source
+    assert "def system" in semantic_source
     assert "CompileTimeObject" not in semantic_source
     assert not (OWNER / "compiler.py").exists()
 
@@ -173,13 +174,13 @@ def test_constructor_part_persists_through_source_variable():
     _session_obj, _registry, _by_name, environment = _registry_environment()
     compilation = analyze_group_source(
         'from packages import lsystem\n'
-        'a = input_float("Angle")\npart = angle(a)\ngeo = generate_lsystem(axiom("F"), iterations(1), part, step(1))\noutput(geo)\n',
+        'a = input_float("Angle")\npart = angle(a)\ngeo = system(axiom("F"), iterations(1), part, step(1))\noutput(geo)\n',
         compilation_identity=_identity("persist"),
         resolved_environment=environment,
     )
     assert compilation.body is not None
     extension_calls = [call for call in _find_ir_calls(compilation.body) if call.target.kind is IRCallableKind.EXTENSION]
-    ls_system_call = next(call for call in extension_calls if call.target.name == "generate_lsystem")
+    ls_system_call = next(call for call in extension_calls if call.target.name == "system")
     assert ls_system_call.extension_state is not None
 
 
@@ -196,7 +197,7 @@ def test_repeat_cannot_carry_extension_semantic_value():
 
 
 def test_semantic_part_list_literal_star_uses_generic_semantic_list_path():
-    """Sibling L-System part records can form a semantic list and expand into generate_lsystem()."""
+    """Sibling L-System part records can form a semantic list and expand into system()."""
     _session_obj, _registry, _by_name, environment = _registry_environment()
     compilation = analyze_group_source(
         'from packages import lsystem\n'
@@ -206,13 +207,13 @@ def test_semantic_part_list_literal_star_uses_generic_semantic_list_path():
         '    angle(25),\n'
         '    step(1),\n'
         ']\n'
-        'geo = generate_lsystem(*parts)\n'
+        'geo = system(*parts)\n'
         'output(geo)\n',
         compilation_identity=_identity("semantic_list_direct"),
         resolved_environment=environment,
     )
     extension_calls = [call for call in _find_ir_calls(compilation.body) if call.target.kind is IRCallableKind.EXTENSION]
-    assert any(call.target.name == "generate_lsystem" for call in extension_calls)
+    assert any(call.target.name == "system" for call in extension_calls)
 
 
 def test_semantic_part_list_literal_preserves_persistent_runtime_dependency():
@@ -224,13 +225,13 @@ def test_semantic_part_list_literal_preserves_persistent_runtime_dependency():
         'axiom = axiom("F")\n'
         'angle = angle(runtime_angle)\n'
         'parts = [axiom, iterations(2), angle, step(1)]\n'
-        'geo = generate_lsystem(*parts)\n'
+        'geo = system(*parts)\n'
         'output(geo)\n',
         compilation_identity=_identity("semantic_list_persistent"),
         resolved_environment=environment,
     )
     extension_calls = [call for call in _find_ir_calls(compilation.body) if call.target.kind is IRCallableKind.EXTENSION]
-    ls_system_call = next(call for call in extension_calls if call.target.name == "generate_lsystem")
+    ls_system_call = next(call for call in extension_calls if call.target.name == "system")
     assert len(ls_system_call.arguments) == 1
     assert ls_system_call.arguments[0].value.typ is NFType.FLOAT
 
@@ -302,43 +303,64 @@ def test_nodeforge_core_has_no_lsystem_special_case():
 
 
 # Invariant 10 — supported L-System uses ordinary EXTENSION Call IR and v1 executors are gone.
-def test_ls_system_is_ordinary_extension_ir_call():
+@pytest.mark.parametrize("angle_value, dependencies", [("25", 0), ("runtime_angle", 1)])
+def test_ls_system_is_ordinary_extension_ir_call(angle_value, dependencies):
+    """The documented alias resolves to packed extension state with its runtime dependencies."""
     _session_obj, _registry, _by_name, environment = _registry_environment()
     compilation = analyze_group_source(
-        'from packages import lsystem\n'
-        'geo = generate_lsystem(axiom("F"), iterations(1), angle(25), step(1))\noutput(geo)\n',
+        'from packages import lsystem as ls\n'
+        'runtime_angle = input_float("Angle")\n'
+        f'geometry = ls.system(ls.axiom("F"), ls.iterations(1), ls.angle({angle_value}), ls.step(1))\n'
+        'output("Geometry", geometry)\n',
         compilation_identity=_identity("extension_ir"),
         resolved_environment=environment,
     )
-    call = next(call for call in _find_ir_calls(compilation.body) if call.target.name == "generate_lsystem")
+    call = next(call for call in _find_ir_calls(compilation.body)
+                if call.target.extension_callable_id == _by_name["system"])
     assert call.target.kind is IRCallableKind.EXTENSION
+    assert call.extension_state is not None
+    assert len(call.arguments) == dependencies
+
+
+def test_removed_generate_lsystem_member_is_rejected():
+    """The breaking rename rejects the former member through ordinary package resolution."""
+    _session_obj, _registry, by_name, environment = _registry_environment()
+    assert "generate_lsystem" not in by_name
+    with pytest.raises(CompileError, match="generate_lsystem"):
+        analyze_group_source(
+            'from packages import lsystem as ls\n'
+            'geometry = ls.generate_lsystem(ls.axiom("F"), ls.iterations(1), ls.angle(25), ls.step(1))\n'
+            'output("Geometry", geometry)\n',
+            compilation_identity=_identity("removed_member"),
+            resolved_environment=environment,
+        )
 
 
 def test_v1_execution_entrypoints_are_unavailable():
     assert not (CORE / "systems" / "registry.py").exists()
-    library_source = (CORE / "library.py").read_text(encoding="utf-8")
+    library_source = (CORE / "catalog.py").read_text(encoding="utf-8")
     for name in ("compile_module_library_entry_call", "compile_module_library_entry_call_resolved"):
         assert f"def {name}(" not in library_source
 
 
 # Invariant 11 — pure source/native v2 remain separate while source+interface hybrid stays blocked.
 def test_pure_source_path_remains_present():
-    source = (CORE / "source_callables.py").read_text(encoding="utf-8")
+    source = (CORE / "semantic" / "source_callable_session.py").read_text(encoding="utf-8")
     assert "class SourceCallableSession" in source
-    assert "analyze_group_source" in (CORE / "semantic_group.py").read_text(encoding="utf-8")
+    assert "analyze_group_source" in (CORE / "semantic" / "group.py").read_text(encoding="utf-8")
 
 
 def test_hybrid_v2_remains_explicitly_blocked():
-    library_source = (CORE / "library.py").read_text(encoding="utf-8")
-    semantic_source = (CORE / "semantic_analysis.py").read_text(encoding="utf-8")
-    marker = "Source-backed library owners with interface.py are reserved for the"
-    assert marker in library_source
-    assert "hybrid" in semantic_source.lower() and "TODO(nodeforge-migration)" in semantic_source
+    """Hybrid source/interface owners remain excluded from native extension admission."""
+    catalog_source = (CORE / "catalog.py").read_text(encoding="utf-8")
+    environment_source = (CORE / "environment_resolution.py").read_text(encoding="utf-8")
+    assert 'kind = "v2_hybrid" if source_path is not None else "extension"' in catalog_source
+    assert 'getattr(record, "source_path", None) is not None' in environment_source
 
 
 # Invariant 12 — generic backend result validation is the authority.
 def test_declared_geometry_result_accepts_backend_wrapper(monkeypatch):
-    import NodeForge.blender_extension_backend as extension_backend
+    import NodeForge.blender.extension_backend as extension_backend
 
     monkeypatch.setattr(extension_backend, "validate_runtime_value_socket", lambda *_args, **_kwargs: None)
     spec = TypeSpec("NF_SET", nf_types=frozenset({NFType.GEOMETRY}))
@@ -348,7 +370,7 @@ def test_declared_geometry_result_accepts_backend_wrapper(monkeypatch):
 
 
 def test_raw_or_wrong_typed_backend_result_is_rejected(monkeypatch):
-    import NodeForge.blender_extension_backend as extension_backend
+    import NodeForge.blender.extension_backend as extension_backend
 
     monkeypatch.setattr(extension_backend, "validate_runtime_value_socket", lambda *_args, **_kwargs: None)
     spec = TypeSpec("NF_SET", nf_types=frozenset({NFType.GEOMETRY}))
@@ -402,11 +424,11 @@ def test_invalid_marker_forms_remain_package_errors(monkeypatch):
     from systems.lsystem.interface import (
         LSystemAngle, LSystemAxiom, LSystemIterations, LSystemMarker, LSystemStep,
     )
-    from systems.lsystem.semantic import generate_lsystem
+    from systems.lsystem.semantic import system
 
     identity = (1, 2, 3, 4)
     with pytest.raises(CompileError, match="marker identity collision"):
-        generate_lsystem(
+        system(
             LSystemAxiom("F"),
             LSystemIterations(1),
             LSystemAngle(25.0),
@@ -464,3 +486,30 @@ def test_python_signatures_reject_invalid_binding():
         by_name["rule"].python_signature().bind("F")
     with pytest.raises(TypeError):
         by_name["angle"].python_signature().bind(1, unexpected=True)
+
+
+@pytest.mark.parametrize("example", sorted((ROOT / "examples").glob("*.nf")), ids=lambda path: path.stem)
+def test_examples_resolve_system_through_package_alias(example, tmp_path):
+    """Every shipped example resolves its qualified system call through Extension API v2."""
+    _session_obj, _registry, by_name, environment = _registry_environment()
+    # Supply the optional example dependency without requiring a sibling Math checkout.
+    from NodeForge.catalog import LibraryEntryRecord
+    source = tmp_path / "radians.nf"
+    source.write_text('x = input_float("X")\noutput(x * pi / 180)\n', encoding="utf-8")
+    record = LibraryEntryRecord("functions", "radians", "source", source,
+                                source_path=source, package_id="nodeforge.math")
+    namespaces = dict(environment.package_namespaces)
+    namespaces["nodeforge.math"] = ResolvedPackageNamespace(
+        "nodeforge.math", "math", "Math fixture", "1.0",
+        {"radians": PackageCallableExport("nodeforge.math", "radians", record=record)},
+    )
+    environment = ResolvedEnvironment(environment.catalogs, package_namespaces=namespaces,
+                                      extension_registry=_registry)
+    compilation = analyze_group_source(
+        example.read_text(encoding="utf-8"),
+        compilation_identity=_identity(example.stem),
+        resolved_environment=environment,
+        source_callable_session=SourceCallableSession(resolved_environment=environment),
+    )
+    assert any(call.target.extension_callable_id == by_name["system"]
+               for call in _find_ir_calls(compilation.body))

@@ -18,7 +18,7 @@ def validate_stream(value: str, context: str) -> str:
     """Validate an axiom or replacement string before marker-aware parsing."""
     if not isinstance(value, str):
         raise CompileError(f"{context} must be a compile-time string")
-    # Parenthesized module streams are fully validated after generate_lsystem() collects
+    # Parenthesized module streams are fully validated after system() collects
     # params and markers. Legacy streams keep the previous strict character contract.
     relaxed = "(" in value or ")" in value
     for ch in value:

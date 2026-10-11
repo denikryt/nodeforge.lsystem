@@ -82,7 +82,7 @@ def marker(name, *parameter_names) -> LSystemMarker:
     return LSystemMarker(name, tuple(normalized), marker_identity(name))
 
 
-def generate_lsystem(*parts) -> _LSystemSpec:
+def system(*parts) -> _LSystemSpec:
     """Normalize public L-System parts into one complete private backend specification."""
     axiom = None
     iterations = None
@@ -95,52 +95,52 @@ def generate_lsystem(*parts) -> _LSystemSpec:
 
     for part in parts:
         if not isinstance(part, LSystemPart):
-            raise CompileError("generate_lsystem() accepts only L-system constructor parts")
+            raise CompileError("system() accepts only L-system constructor parts")
         if isinstance(part, LSystemAxiom):
             if axiom is not None:
-                raise CompileError("generate_lsystem() received duplicate axiom()")
+                raise CompileError("system() received duplicate axiom()")
             axiom = part.value
         elif isinstance(part, LSystemIterations):
             if iterations is not None:
-                raise CompileError("generate_lsystem() received duplicate iterations()")
+                raise CompileError("system() received duplicate iterations()")
             iterations = part.value
         elif isinstance(part, LSystemAngle):
             if angle is not None:
-                raise CompileError("generate_lsystem() received duplicate angle()")
+                raise CompileError("system() received duplicate angle()")
             angle = part.value
         elif isinstance(part, LSystemStep):
             if step is not None:
-                raise CompileError("generate_lsystem() received duplicate step()")
+                raise CompileError("system() received duplicate step()")
             step = part.value
         elif isinstance(part, LSystemParam):
             if part.name in params:
-                raise CompileError(f"generate_lsystem() received duplicate param() for {part.name!r}")
+                raise CompileError(f"system() received duplicate param() for {part.name!r}")
             params[part.name] = part.value
         elif isinstance(part, LSystemMarker):
             if part.name in markers:
-                raise CompileError(f"generate_lsystem() received duplicate marker() for {part.name!r}")
+                raise CompileError(f"system() received duplicate marker() for {part.name!r}")
             if part.marker_identity in identities:
                 raise CompileError(
-                    f"generate_lsystem() marker identity collision between "
+                    f"system() marker identity collision between "
                     f"{identities[part.marker_identity]!r} and {part.name!r}"
                 )
             identities[part.marker_identity] = part.name
             markers[part.name] = part
         elif isinstance(part, LSystemRule):
             if part.symbol in raw_rules:
-                raise CompileError(f"generate_lsystem() received duplicate rule for {part.symbol!r}")
+                raise CompileError(f"system() received duplicate rule for {part.symbol!r}")
             raw_rules[part.symbol] = part.replacement
         else:
-            raise CompileError("generate_lsystem() accepts only L-system constructor parts")
+            raise CompileError("system() accepts only L-system constructor parts")
 
     if axiom is None:
-        raise CompileError("generate_lsystem() requires axiom(...)")
+        raise CompileError("system() requires axiom(...)")
     if iterations is None:
-        raise CompileError("generate_lsystem() requires iterations(...)")
+        raise CompileError("system() requires iterations(...)")
     if angle is None:
-        raise CompileError("generate_lsystem() requires angle(...)")
+        raise CompileError("system() requires angle(...)")
     if step is None:
-        raise CompileError("generate_lsystem() requires step(...)")
+        raise CompileError("system() requires step(...)")
 
     parsed_axiom = parse_stream(axiom, params=params, markers=markers, context="axiom()")
     parsed_rules = {
