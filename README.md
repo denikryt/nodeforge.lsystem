@@ -4,7 +4,7 @@ NodeForge L-System is an installable package for NodeForge that builds static an
 
 ## Compatibility
 
-NodeForge L-System 4.0 supports NodeForge 0.65.0–0.65.4. Because the package contains executable Python extensions, Python permission must be enabled when it is imported.
+NodeForge L-System requires NodeForge 0.65.0 or newer. Download `nodeforge.lsystem-v<version>_nf-v<minimum-nodeforge-version>.zip` from [NodeForge L-System releases](https://github.com/denikryt/nodeforge.lsystem/releases), then install it with **NodeForge → Packages → Install ZIP**.
 
 ## Public callables
 

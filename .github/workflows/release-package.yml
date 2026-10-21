@@ -1,0 +1,111 @@
+name: Publish NodeForge L-System package
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build package archive
+    runs-on: ubuntu-24.04
+    outputs:
+      archive: ${{ steps.package.outputs.archive }}
+      checksum: ${{ steps.package.outputs.checksum }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release tag
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(Path("nodeforge_package.json").read_text())
+          expected_tag = "v" + manifest["version"]
+          assert os.environ["TAG_NAME"] == expected_tag, (
+              f"release tag {os.environ['TAG_NAME']!r} must equal {expected_tag!r}"
+          )
+          PY
+      - name: Build and validate package archive
+        id: package
+        run: |
+          set -euo pipefail
+          ARCHIVE="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import zipfile
+
+          manifest_path = Path("nodeforge_package.json")
+          manifest = json.loads(manifest_path.read_text())
+          package_id = manifest["id"]
+          version = manifest["version"]
+          minimum = manifest["nodeforge_min_version"]
+          archive = Path("dist") / f"{package_id}-v{version}_nf-v{minimum}.zip"
+          archive.parent.mkdir(exist_ok=True)
+
+          members = [manifest_path]
+          members.extend(path for path in (Path("README.md"), Path("LICENCE")) if path.is_file())
+          for root_name in manifest["contents"].values():
+              root = Path(root_name)
+              assert root.is_dir(), f"missing manifest content root: {root}"
+              members.extend(
+                  path for path in sorted(root.rglob("*"))
+                  if path.is_file() and "__pycache__" not in path.parts
+              )
+
+          with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zipped:
+              for member in members:
+                  zipped.write(member, member.as_posix())
+
+          with zipfile.ZipFile(archive) as zipped:
+              names = set(zipped.namelist())
+              assert "nodeforge_package.json" in names
+              assert not any(
+                  part == "__pycache__" or name.endswith((".pyc", ".pyo"))
+                  for name in names for part in Path(name).parts
+              )
+              for root_name in manifest["contents"].values():
+                  assert any(name.startswith(root_name + "/") for name in names), root_name
+
+          print(archive)
+          PY
+          )"
+          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "checksum=$ARCHIVE.sha256" >> "$GITHUB_OUTPUT"
+      - name: Preserve release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodeforge-lsystem-release-package
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.checksum }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release asset
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Retrieve release package
+        uses: actions/download-artifact@v4
+        with:
+          name: nodeforge-lsystem-release-package
+          path: dist/
+      - name: Publish immutable package archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ github.ref_name }}
+          ARCHIVE: ${{ needs.build.outputs.archive }}
+          CHECKSUM: ${{ needs.build.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG_NAME" "$ARCHIVE" "$CHECKSUM" --generate-notes --verify-tag
