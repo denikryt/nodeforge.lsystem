@@ -139,20 +139,20 @@ def test_package_semantic_source_has_no_compiler_or_backend_carrier_dependency()
         assert token not in source
 
 
-def test_lsystem_manifest_targets_nodeforge_065x():
-    """The L-System 4.0 artifact admits the NodeForge 0.65.x patch line."""
+def test_lsystem_manifest_targets_nodeforge_0902():
+    """The typed L-System 4.1 examples require NodeForge 0.90.2 or later."""
     manifest = packages.validate_package_root(ROOT)
     raw = json.loads((ROOT / "nodeforge_package.json").read_text(encoding="utf-8"))
-    assert manifest.version == "4.0"
+    assert manifest.version == "4.1"
     assert manifest.import_name == "lsystem"
-    assert raw["nodeforge_min_version"] == "0.65.0"
-    assert raw["nodeforge_max_version"] == "0.65.4"
+    assert raw["nodeforge_min_version"] == "0.90.2"
+    assert raw.get("nodeforge_max_version") is None
 
 
-def test_manifest_no_longer_caps_at_nodeforge_0621():
-    """The coordinated L-System artifact cannot remain pinned to the pre-cutover core patch."""
+def test_manifest_keeps_current_runtime_unbounded():
+    """The modern L-System package admits future compatible NodeForge versions."""
     raw = json.loads((ROOT / "nodeforge_package.json").read_text(encoding="utf-8"))
-    assert raw["nodeforge_max_version"] != "0.62.1"
+    assert raw.get("nodeforge_max_version") is None
 
 def test_examples_qualify_package_callables_shadowed_by_source_values():
     """Package examples qualify constructors when a same-name source value owns the bare spelling."""
