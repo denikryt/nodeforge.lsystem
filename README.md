@@ -4,7 +4,7 @@ NodeForge L-System is an installable package for NodeForge that builds static an
 
 ## Compatibility
 
-NodeForge L-System requires NodeForge 0.65.0 or newer. Download `nodeforge.lsystem-v<version>_nf-v<minimum-nodeforge-version>.zip` from [NodeForge L-System releases](https://github.com/denikryt/nodeforge.lsystem/releases), then install it with **NodeForge → Packages → Install ZIP**.
+NodeForge L-System requires NodeForge 0.90.2 or newer. Download `nodeforge.lsystem-v<version>_nf-v<minimum-nodeforge-version>.zip` from [NodeForge L-System releases](https://github.com/denikryt/nodeforge.lsystem/releases), then install it with **NodeForge → Packages → Install ZIP**.
 
 ## Public callables
 
@@ -13,13 +13,13 @@ The package provides semantic constructors `axiom()`, `rule()`, `iterations()`, 
 ```python
 from packages import lsystem as ls
 
-geometry = ls.system(
-    ls.axiom("F"),
-    ls.iterations(1),
-    ls.angle(25),
-    ls.step(1),
-)
-output("Geometry", geometry)
+def basic_lsystem() -> Geometry["Geometry"]:
+    return ls.system(
+        ls.axiom("F"),
+        ls.iterations(1),
+        ls.angle(25),
+        ls.step(1),
+    )
 ```
 
 ## Extension architecture
